@@ -138,7 +138,6 @@ def dual_crown_meshing(circle_radius, circle_teeth):
 	flex_max, flex_min = flex_args(flex, circle_radius, ratio=flex_teeth/circle_teeth)
 
 	phases = homogeneous_spacing(partial(flex, flex_max, flex_min), 0, 2*pi, flex_teeth)
-	print('flex', flex_min, flex_max)
 	
 	base = wire(vec3(flex(flex_max, flex_min, phase),0)  for phase in phases).close()
 
@@ -299,28 +298,28 @@ def dual_crown_housing_guided(
 			out_zmin*Z + mix(out_rmin, out_rmax, +1.1)*X + 0.3*(out_rmax-out_rmin)*Z,
 			])))
 
-	output_interior = wire([
-		mix(out_rmin, out_rmax, 0.5)*X + out_zmin*Z - out_clearance*Z,
-		mix(out_rmin, out_rmax, 0.5)*X + out_zmin*Z,
-		out_rmin*0.98*X + out_zmin*Z + (out_rmax - out_rmin)*0.5*Z,
-		out_rmin*0.98*X + out_zmax*Z - (out_rmax - out_rmin)*0.5*Z,
-
-		out_rmax*X + out_zmax*Z - 0.1*(out_rmax - out_rmin)*Z,
-		out_rmax*X + out_zmax*Z + shell_thickness*X - shell_thickness*Z,
-		out_rmax*X + out_zmin*Z + shell_thickness*X - (out_clearance+shell_thickness)*Z,
-
-		bearing_center + bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
-		bearing_center + bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.)*X,
-		bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.)*X,
+	output_exterior = wire([
+		bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
+		bearing_center - (bearing_height*0.7 + dscrew_out)*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
+		bearing_center - (bearing_height*0.7 + dscrew_out)*Z + (bearing_rint - dscrew_out*2)*X,
+		bearing_center + bearing_height*0.4*Z + hole*X,
+		bearing_center + bearing_height*0.7*Z + hole*X,
+		bearing_center + bearing_height*0.7*Z + mix(bearing_rint, bearing_rext, 0.2)*X,
 		]).segmented()
 	if details:
-		output_exterior = wire([
-			bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
-			bearing_center - (bearing_height*0.7 + dscrew_out)*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
-			bearing_center - (bearing_height*0.7 + dscrew_out)*Z + (bearing_rint - dscrew_out*2)*X,
-			bearing_center + bearing_height*0.4*Z + hole*X,
-			bearing_center + bearing_height*0.7*Z + hole*X,
-			bearing_center + bearing_height*0.7*Z + mix(bearing_rint, bearing_rext, 0.2)*X,
+		output_interior = wire([
+			mix(out_rmin, out_rmax, 0.5)*X + out_zmin*Z - out_clearance*Z,
+			mix(out_rmin, out_rmax, 0.5)*X + out_zmin*Z,
+			out_rmin*0.98*X + out_zmin*Z + (out_rmax - out_rmin)*0.5*Z,
+			out_rmin*0.98*X + out_zmax*Z - (out_rmax - out_rmin)*0.5*Z,
+	
+			out_rmax*X + out_zmax*Z - 0.1*(out_rmax - out_rmin)*Z,
+			out_rmax*X + out_zmax*Z + shell_thickness*X - shell_thickness*Z,
+			out_rmax*X + out_zmin*Z + shell_thickness*X - (out_clearance+shell_thickness)*Z,
+	
+			bearing_center + bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
+			bearing_center + bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.)*X,
+			bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.)*X,
 			]).segmented()
 		output_body = intersection(
 			revolution((output_interior + output_exterior).close()), 
@@ -371,25 +370,30 @@ def dual_crown_housing_guided(
 	else:
 		shell = revolution(shell_outside)
 	
-	shell = intersection(shell, holes.output.ext + holes.input.ext)
+	shell_body = intersection(shell, holes.output.ext + holes.input.ext)
 
 	# cut the main parts into assebmlable parts
 	if details:
 		split_in = square(Axis(bearing_center + bearing_height*0.7*Z, -Z), 1.5*rext)
 		split_out = square(Axis(bearing_center + bearing_height*0.2*Z, Z), 1.5*rext)
 		shell = Solid(
-			input = intersection(shell, split_in),
-			mid = intersection(shell, split_in.flip() + split_out.flip()),
-			output = intersection(shell, split_out),
+			input = intersection(shell_body, split_in),
+			mid = intersection(shell_body, split_in.flip() + split_out.flip()),
+			output = intersection(shell_body, split_out),
 			bearing = bearing,
-			bolts = bolts.output.ext[1:],
 			)
 		split = square(Axis(bearing_center - bearing_height*0.2*Z, Z), 2*bearing_rint)
 		output.int.crown = intersection(output_body, split.flip())
 		output.int.front = intersection(output_body, split)
-		output.int.bolts = bolts.output.int[1:]
 	else:
+		shell = Solid(
+			body = shell_body,
+			bearing = bearing,
+			)
 		output.int.body = output_body
+
+	output.int.bolts = bolts.output.int[1:]
+	shell.bolts = bolts.output.ext[1:]
 
 	return Solid(
 		crown_in = shell,
@@ -436,7 +440,7 @@ def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:fl
 		)
 
 
-def elliptic_circulating(rball, rballs, nballs=None):
+def strainwave_circulating(rball, rballs, nballs=None):
 	if nballs is None:
 		nballs = int(floor(2*pi*rballs / (3.3*rball)))
 	
@@ -463,12 +467,12 @@ def elliptic_circulating(rball, rballs, nballs=None):
 	return Solid(cage=cage, balls=balls)
 
 def balls_guide_profile(rballs, rball, start, stop):
-	return wire([vec3(rballs + rball*cos(t), 0, 1.05*rball*sin(t))
+	return wire([vec3(rballs + rball*cos(t), 0, 1.08*rball*sin(t))
 		for t in linrange(start, stop, div=10)])
 
 
-
-def elliptic_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, dscrew = None, guided=True):
+@cachefunc
+def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, dscrew = None, guided=True, details=False):
 	if height is None:
 		height = stceil(0.2*rext) # special case for cage height
 		cage_height = rball*2.2
@@ -477,10 +481,9 @@ def elliptic_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, d
 	if dscrew is None:
 		dscrew_out = stceil(rext*0.1)
 		dscrew_in = stceil(rext*0.08)
-	print(height)
 
 	if guided:
-		play = 0.3  # axial play
+		axial_play = 0.3  # axial play
 		meshing = dual_crown_meshing(
 			circle_radius = (rext-1.2*dscrew_out)*0.8, 
 			circle_teeth = nteeth)	
@@ -491,14 +494,13 @@ def elliptic_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, d
 			extrusion(meshing.teeth.crown_out, -height*Z), 
 			dscrew_out=dscrew_out, 
 			dscrew_in=dscrew_in,
-#			in_clearance = 0.5*rball + 2*play,
-#			out_clearance = 0.5*rball + 2*play,
-			out_clearance = play,
+			out_clearance = axial_play,
 			hole = hole,
 			gap = 1.5,
+			details = details,
 			)
 	else:
-		play = 0  # axial play
+		axial_play = 0  # axial play
 		meshing = dual_crown_meshing(
 			circle_radius = (rext-1.2*dscrew_out)*0.85, 
 			circle_teeth = nteeth)	
@@ -509,51 +511,58 @@ def elliptic_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, d
 			extrusion(meshing.teeth.crown_out, height*Z).flip(), 
 			dscrew_out,
 			gap = 0.2,
+			details = details,
 			)
 
-	rballs = rballs = meshing.flex_mean - rball - thickness
-	ball_play = 0.02
-	
-	flex_body = revolution(wire([
-		meshing.flex_mean*X + (height-play)*Z + 3*meshing.teeth.height*X - meshing.teeth.height*Z,
-		meshing.flex_mean*X + (height-play)*Z,
-		meshing.flex_mean*X + (height-play)*Z - thickness*X,
-		balls_guide_profile(rballs, rball+ball_play, radians(40), -radians(40)).transform((height-cage_height)*Z),
-		meshing.flex_mean*X - thickness*X + (height*0.5-rball*1.3)*Z,
-		meshing.flex_mean*X - thickness*X,
-		])).flip()
-	flex_body = flex_body + flex_body.transform(scaledir(Z,-1)).flip()
-	flex = intersection(flex_body, extrusion(meshing.teeth.flex_initial, 2*height*Z, alignment=0.5)).option(color=settings.colors['gear'])
-	
-	generator_body = wire([
-		(rballs*0.5)*X + height*Z,
-		(rballs-rball*1.1)*X + height*Z,
-		balls_guide_profile(rballs, rball+ball_play, radians(-40)+pi, radians(90)+pi).transform((height-cage_height)*Z),
-		(rballs+0.2*rball)*X + (height-cage_height-1.1*rball)*Z,
-		(rballs+0.2*rball)*X,
-		])
-	
-	generator_body = extrans(generator_body.transform(-meshing.flex_mean*X), (
-		translate(vec3(meshing.flex(meshing.flex_max, meshing.flex_min, t),0)) 
-		* mat4(normalize(quat(Y, vec3(meshing.dflex(meshing.flex_max, meshing.flex_min, t), 0))))
-		for t in linrange(0, 2*pi, div=200)
-		))
-	generator_body += generator_body.transform(scaledir(Z,-1)).flip()
-	generator_body.mergeclose()
 	hole_profile = wire([
-		1.5*height*Z + 1.3*hole*X,
-		0.9*height*Z + hole*X,
-		-0.9*height*Z + hole*X,
-		-1.5*height*Z + 1.3*hole*X,
+		height*Z + meshing.flex_max*X,
+		height*Z + hole*X + height*0.1*X,
+		height*+0.9*Z + hole*X,
+		height*-0.9*Z + hole*X,
+		-height*Z + hole*X + height*0.1*X,
+		-height*Z + meshing.flex_max*X,
 		]).segmented().flip()
-	generator_body = intersection(generator_body, revolution(hole_profile))
-	generator = intersection(generator_body,
+	interface_in = intersection(
+		revolution(hole_profile),
 		grooves(hole, 1.5*height, alignment=0).flip(),
 		)
-	
-	circulating_in = elliptic_circulating(rball, rballs).transform((height - cage_height)*Z)
-	circulating_out = circulating_in.transform(rotate(pi,Y))
-	
+
+	if details:
+		rballs = rballs = meshing.flex_mean - rball - thickness
+		ball_play = 0.05
+		
+		flex_body = revolution(wire([
+			meshing.flex_mean*X + (height-axial_play)*Z + 3*meshing.teeth.height*X - meshing.teeth.height*Z,
+			meshing.flex_mean*X + (height-axial_play)*Z,
+			meshing.flex_mean*X + (height-axial_play)*Z - thickness*X,
+			balls_guide_profile(rballs, rball+ball_play, radians(40), -radians(40)).transform((height-cage_height)*Z),
+			meshing.flex_mean*X - thickness*X + (height*0.5-rball*1.3)*Z,
+			meshing.flex_mean*X - thickness*X,
+			])).flip()
+		flex_body = flex_body + flex_body.transform(scaledir(Z,-1)).flip()
+		flex = intersection(flex_body, extrusion(meshing.teeth.flex_initial, 2*height*Z, alignment=0.5)).option(color=settings.colors['gear'])
+		
+		generator_body = wire([
+			(rballs-rball*1.1)*X + height*1.1*Z,
+			balls_guide_profile(rballs, rball+ball_play, radians(-40)+pi, radians(90)+pi).transform((height-cage_height)*Z),
+			(rballs+0.2*rball)*X + (height-cage_height-1.1*rball)*Z,
+			(rballs+0.2*rball)*X,
+			])
+		
+		generator_body = extrans(generator_body.transform(-meshing.flex_mean*X), (
+			translate(vec3(meshing.flex(meshing.flex_max, meshing.flex_min, t),0)) 
+			* mat4(normalize(quat(Y, vec3(meshing.dflex(meshing.flex_max, meshing.flex_min, t), 0))))
+			for t in linrange(0, 2*pi, div=200)
+			))
+		generator_body += generator_body.transform(scaledir(Z,-1)).flip()
+		generator_body.mergeclose()
+		generator = intersection(generator_body, interface_in)
+		
+		circulating_in = strainwave_circulating(rball, rballs).transform((height - cage_height)*Z)
+		circulating_out = circulating_in.transform(rotate(pi,Y))
+	else:
+		generator = interface_in
+		
 #	axis = Axis(O,Z)
 #	joints = [
 #		Revolute(('in', 'ground'), axis),
@@ -585,19 +594,24 @@ def elliptic_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, d
 		circulating_out = circulating_out,
 		)
 
+strainwave = strainwave_dual_crown
+
+
+
 if __name__ == '__madcad__':
 	settings.resolution = ('sqradm', 0.2)
 #	settings.resolution = ('sqradm', 0.4)
 #	settings.resolution = ('sqradm', 0.8)
 	
-	gearbox = elliptic_dual_crown(
-		rext = 40,
+	gearbox = strainwave_dual_crown(
+		rext = 50,
 		nteeth = 60,
-		guided = False,
+		guided = True,
+		details = True,
 		)
 	
 #	import os
-#	folder = os.path.realpath(__file__+'/../elliptic-gearbox-double-f-{}-{}-{}'.format(
+#	folder = os.path.realpath(__file__+'/../strainwave-gearbox-double-f-{}-{}-{}'.format(
 #		gearbox.rext, 
 #		gearbox.height, 
 #		gearbox.nteeth,
@@ -610,11 +624,12 @@ if __name__ == '__madcad__':
 #	io.write(gearbox.generator, folder+'/generator.stl')
 #	
 #	import os
-#	folder = os.path.realpath(__file__+'/../elliptic-gearbox-double-g-{}-{}-{}'.format(
+#	folder = os.path.realpath(__file__+'/../strainwave-gearbox-double-g-{}-{}-{}'.format(
 #		gearbox.rext, 
 #		gearbox.height, 
 #		gearbox.nteeth,
 #		))
+#	print(folder)
 #	os.mkdir(folder)
 #	io.write(gearbox.flex, folder+'/flex.stl')
 #	io.write(gearbox.crown_in.output, folder+'/crown_in_output.stl')
