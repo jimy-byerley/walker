@@ -57,17 +57,90 @@ def grooves(radius, height, repetitions:int=16, alignment=0.5, angle=radians(40)
 				translate(height*Z) * scale(vec3(0.1)),
 				])
 
+
+def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, hold:float=0) -> '(Mesh, list)':
+	''' holes and bolts to screw a circular perimeter
+	
+		Parameters:
+			axis:  placement of circle around which the screws are placed
+			radius: radius of the perimeter on which to put the screws
+			height: bolts length
+			dscrew: diameter of the biggest screws
+			diameters: each biggest screw is followed by this number-1 of additional smaller diameters
+			div: number of biggest screws distributed uniformly on the perimeter
+			hold: 
+				if non zero, holding screws of the given length are added to help the assembly.
+				if True, the holding screws length is automatically determined.
+				
+		Return: a tuple (holes:Mesh, bolts:list) where the bolts is a list of `Solid`
+	'''
+	holes = Mesh()
+	bolts = []
+	x,y,z = dirbase(axis.direction)
+	a = axis.origin + radius*x
+	b = axis.origin + radius*x + height*z
+	gap = 0.1*dscrew*z
+	enlarge = 1.05
+	diameters_list = []
+	for i in range(diameters):
+		d = enlarge*stfloor(0.8**i * dscrew)/2
+		diameters_list.append(d)
+		holes += cylinder(a-gap, b+gap, d) .transform(rotatearound(i*1.4*dscrew/radius, axis))
+	holes = repeataround(holes, 8, axis).flip()
+	screwing = Solid(
+		interface = Solid(
+			perimeter = Circle(axis, radius),
+			div = div,
+			diameters = diameters_list,
+			height = height,
+			annotations = Solid(
+				perimeter = note_leading(
+					axis.origin + radius*normalize(x+y*0.5), 
+					offset=radius*0.2*(normalize(x+y*0.5)-z), 
+					text='R {:g}'.format(radius)),
+				screw = note_leading(
+					axis.origin + radius*x, 
+					offset=radius*0.2*(x-z), 
+					text='{}x M{:g}x{:g}'.format(div, dscrew, height)),
+				),
+			),
+		holes = holes,
+		placeholder = bolt(a, b, dscrew),
+		)
+	if hold is True:
+		hold = dscrew
+	if hold:
+		angle = 1.7*dscrew/radius
+		holes += repeataround(screw_slot(Axis(a+gap,-z), dscrew, 
+					screw=height-hold, 
+					hole=hold, 
+					flat=True), 2) .transform(rotatearound(-angle, axis))
+		screwing.hold = [
+			screw(dscrew, height, head='flat')
+				.place((Revolute, Axis(O,Z), Axis(a,-z)))
+				.transform(rotatearound(-angle, axis)),
+			screw(dscrew, height, head='flat')
+				.place((Revolute, Axis(O,Z), Axis(a,-z)))
+				.transform(rotatearound(pi-angle, axis)),
+			note_leading(
+				rotatearound(-angle, axis)*a, 
+				offset=radius*0.2*(x-z), 
+				text='2x M{:g}x{:g} HS'.format(dscrew, height-hold)),
+			]
+	return screwing
+
 def ball_bearing(dint, dext=None, h=None, **kwargs):
 	return Solid(
 		rint = dint/2,
 		rext = dext/2,
 		height = h,
-		placeholder = standard.bearing(dint, dext, h, **kwargs),
-		annotations = [
-			note_distance(O, dint/2*X),
-			note_distance(dext/2*X - h/2*Z, dext/2*X + h/2*Z, offset=h*X),
-			note_distance(dint/2*X + h/2*Z, dext/2*X + h/2*Z, offset=h*Z),
-		])
+		placeholder = standard.bearing(dint, dext, h, **kwargs).part,
+		annotations = Solid(
+			name = note_leading(dext/2*X + h/2*Z, h*2*(X+Z), text='{:g}x{:g}x{:g}\nball bearing'.format(dint, dext, h)),
+			rint = note_distance(O, dint/2*X),
+			height = note_distance(dext/2*X - h/2*Z, dext/2*X + h/2*Z, offset=h*X),
+			width = note_distance(dint/2*X + h/2*Z, dext/2*X + h/2*Z, offset=h*Z),
+		))
 
 def perimeter(f, start, stop, div=128):
 	points = [f(x)  for x in linrange(start, stop, div=div)]
@@ -265,19 +338,21 @@ def dual_crown_housing_guided(
 		output = Solid(),
 		input = Solid(),
 		)
-	holes.output.ext, bolts.output.ext = circular_screwing(
+	output.ext = circular_screwing(
 		output.ext.perimeter.axis.transform(bearing_height*1.7*Z).flip(), 
 		output.ext.perimeter.radius, 
 		bearing_height*1.7, 
 		dscrew_out, 
-		diameters=2, hold=bearing_height*0.8)
-	holes.output.int, bolts.output.int = circular_screwing(
+		diameters=2, 
+		hold=bearing_height*0.8*details)
+	output.int= circular_screwing(
 		output.int.perimeter.axis, 
 		output.int.perimeter.radius, 
 		bearing_height*1.7, 
 		dscrew_out, 
-		diameters=2, hold=1.3*dscrew_out)
-	holes.input.ext, bolts.input.ext = circular_screwing(
+		diameters=2, 
+		hold=1.3*dscrew_out*details)
+	input.ext = circular_screwing(
 		input.ext.perimeter.axis, 
 		input.ext.perimeter.radius, 
 		dscrew_in, 
@@ -323,12 +398,13 @@ def dual_crown_housing_guided(
 			]).segmented()
 		output_body = intersection(
 			revolution((output_interior + output_exterior).close()), 
-			holes.output.int + crown_out)
+			output.int.holes + crown_out)
 	else:
 		output_body = intersection(
 			revolution(output_exterior), 
-			holes.output.int)
+			output.int.holes)
 
+	cut = lambda c: c.center + c.radius*X
 	shell_outside = wire([
 		bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.7)*X,
 		bearing_center - bearing_height*0.7*Z + mix(bearing_rint, bearing_rext, 0.7)*X,
@@ -340,10 +416,10 @@ def dual_crown_housing_guided(
 		(out_rmax+2*shell_thickness+gap)*X + out_zmax*Z + shell_thickness*Z,
 		(in_rmax+1*shell_thickness)*X + in_zmax*Z + shell_thickness*Z,
 		
-		input.ext.screw.center + (+ 1.5*dscrew_in)*X + shell_thickness*(X+Z),
-		input.ext.screw.center + (- 1.2*dscrew_in)*X +shell_thickness*Z,
-		input.ext.screw.center + (- 1.2*dscrew_in)*X,
-		input.ext.screw.center + (+ 1.5*dscrew_in)*X,
+		cut(input.ext.interface.perimeter) + (+ 1.5*dscrew_in)*X + shell_thickness*(X+Z),
+		cut(input.ext.interface.perimeter) + (- 1.2*dscrew_in)*X +shell_thickness*Z,
+		cut(input.ext.interface.perimeter) + (- 1.2*dscrew_in)*X,
+		cut(input.ext.interface.perimeter) + (+ 1.5*dscrew_in)*X,
 		
 		in_zmax*Z + in_clearance*Z + in_rmin*X,
 		in_zmax*Z - gap*Z + in_rmin*X,
@@ -370,34 +446,56 @@ def dual_crown_housing_guided(
 	else:
 		shell = revolution(shell_outside)
 	
-	shell_body = intersection(shell, holes.output.ext + holes.input.ext)
+	shell_body = intersection(shell, output.ext.holes + input.ext.holes)
 
 	# cut the main parts into assebmlable parts
 	if details:
 		split_in = square(Axis(bearing_center + bearing_height*0.7*Z, -Z), 1.5*rext)
 		split_out = square(Axis(bearing_center + bearing_height*0.2*Z, Z), 1.5*rext)
-		shell = Solid(
-			input = intersection(shell_body, split_in),
+		crown_in = Solid(
+			hat = intersection(shell_body, split_in),
 			mid = intersection(shell_body, split_in.flip() + split_out.flip()),
-			output = intersection(shell_body, split_out),
+			front = intersection(shell_body, split_out),
 			bearing = bearing,
+			holds = output.ext.hold,
 			)
 		split = square(Axis(bearing_center - bearing_height*0.2*Z, Z), 2*bearing_rint)
-		output.int.crown = intersection(output_body, split.flip())
-		output.int.front = intersection(output_body, split)
+		crown_out = Solid(
+			crown = intersection(output_body, split.flip()),
+			front = intersection(output_body, split),
+			holds = output.int.hold,
+			)
 	else:
-		shell = Solid(
+		crown_in = Solid(
 			body = shell_body,
 			bearing = bearing,
 			)
-		output.int.body = output_body
-
-	output.int.bolts = bolts.output.int[1:]
-	shell.bolts = bolts.output.ext[1:]
+		crown_out = Solid(body = output_body)
 
 	return Solid(
-		crown_in = shell,
-		crown_out = output.int,
+		crown_out = crown_out.update(output.int.interface),
+		crown_in = crown_in.update(
+			input=input.ext.interface, 
+			output=output.ext.interface,
+			annotations = Solid(
+				ext_height = note_distance(
+					shell_outside.points[2],
+					shell_outside.points[3],
+					offset = bearing_height*1.5*X,
+					),
+				hub_height = note_distance(
+					shell_outside.box().min,
+					output_exterior.box().min,
+					project = Z,
+					offset = rext*0.7*X,
+					),
+				total_height = note_distance(
+					shell_outside.box().min,
+					shell_outside.box().max,
+					project = Z,
+					offset = rext*0.7*X,
+					),
+			)),
 		)
 
 def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:float=4, gap=0.2):
@@ -464,14 +562,18 @@ def strainwave_circulating(rball, rballs, nballs=None):
 	slot = union(inflate(balls, rball*0.1), cone(rball*Z, -1.2*rball*Z, 1.5*rball).transform(rballs*X))
 	cage_pattern = difference(cage_pattern.transform(vec3(0.001)), slot + slot.transform(spacing))
 	cage = repeat(cage_pattern, nballs, spacing).option(color=settings.colors['bearing_cage'])
-	return Solid(cage=cage, balls=balls)
+	return Solid(
+		cage = cage, 
+		balls = balls,
+		annotations = note_leading(rballs*X, offset=rballs*0.5*X, text='{}x ø{:g} balls'.format(nballs, 2*rball)),
+		)
 
 def balls_guide_profile(rballs, rball, start, stop):
 	return wire([vec3(rballs + rball*cos(t), 0, 1.08*rball*sin(t))
 		for t in linrange(start, stop, div=10)])
 
 
-@cachefunc
+#@cachefunc
 def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, dscrew = None, guided=True, details=False):
 	if height is None:
 		height = stceil(0.2*rext) # special case for cage height
@@ -562,6 +664,9 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3,
 		circulating_out = circulating_in.transform(rotate(pi,Y))
 	else:
 		generator = interface_in
+		flex = None
+		circulating_in = None
+		circulating_out = None
 		
 #	axis = Axis(O,Z)
 #	joints = [
@@ -584,24 +689,27 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3,
 	return Solid(
 		height = height,
 		rext = rext,
+		hole = hole,
 		guided = guided,
 		nteeth = nteeth,
-		crown_in = housing.crown_in,
-		crown_out = housing.crown_out,
+		shell = housing.crown_in,
+		output = housing.crown_out,
 		flex = flex,
-		generator = generator,
+		input = generator,
 		circulating_in = circulating_in,
 		circulating_out = circulating_out,
-		)
+		annotations = Solid(
+			hole = note_distance(hole*X, -hole*X, offset=-hole*2*Z, text='ø {:g}'.format(hole)),
+		))
 
 strainwave = strainwave_dual_crown
 
 
 
 if __name__ == '__madcad__':
-	settings.resolution = ('sqradm', 0.2)
+#	settings.resolution = ('sqradm', 0.2)
 #	settings.resolution = ('sqradm', 0.4)
-#	settings.resolution = ('sqradm', 0.8)
+	settings.resolution = ('sqradm', 0.8)
 	
 	gearbox = strainwave_dual_crown(
 		rext = 50,
