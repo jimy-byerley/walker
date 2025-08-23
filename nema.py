@@ -50,8 +50,8 @@ def round(width, spacing, dscrew, lscrew, dhub, hhub):
 			width=width, spacing=spacing, dscrew=dscrew, lscrew=lscrew, dhub=dhub, hhub=hhub, 
 			screws=screws, hub=hub, outline=outline,
 			annotations=Solid(
-				width = note_radius(outline, text='ø {}'.format(width)),
-				spacing = note_distance(-spacing/2*X, +spacing/2*X, offset=width*0.7),
+				width = note_distance(-width/2*X, +width/2*X, offset=width*0.8, text='ø {}'.format(width)),
+				spacing = note_distance(-spacing/2*X, +spacing/2*X, offset=width*0.6),
 				dhub = note_radius(wire(hub), offset=width*0.5),
 				dscrew = note_radius(wire(screws[0]), offset=width*0.5, text='2x M{}x{}'.format(dscrew, lscrew)),
 			))
@@ -74,7 +74,7 @@ rounds = {
 	23: round(width=57, spacing=38.88, dscrew=4, lscrew=4, dhub=25, hhub=2),
 	}
 
-@cachefunc
+#@cachefunc
 def motor(dim=17, length=None, dshaft=None, lshaft=None, coupling=None, round=False):
 	if round:
 		dim = rounds[dim]

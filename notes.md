@@ -128,12 +128,56 @@ en general les vérins demandent beaucoup d'adaptation des pieces sur lequelles 
 
 mieux vaut rester sur les moto-reducteurs rotatifs
 
-voir les reducteurs elliptiques et planétaires composés
+- reducteurs planetaires composés: difficile a monter, difficilement reversible
+- reducteurs a onde de deformation: facile a fabriquer, monter, reversible si bonne qualité d'impression en PETG
+
+catalogue de roulements sur [123roulement](https://www.123roulement.com/roulement-palier/roulement-bille/simple-rangee)
 
 ## moteurs
 
-il faut un contrôle en force, donc le moteur stepper est éliminé.
-
-le moteur a courant continu a  un couple qui dépend de la position rotor
+il faut un contrôle en force, donc le moteur stepper est éliminé. le moteur a courant continu a  un couple qui dépend de la position rotor donc le joint sera faible
 
 donc moteur synchrone. 
+
+- les [nema ronds](https://www.omc-stepperonline.com/fr/24v-3000rpm-0-08nm-25w-1-80a-42x51mm-moteur-cc-sans-balais-42bya51-24-01) peuvent etre monté dans l'arbre creux
+- [stepperonline](https://www.omc-stepperonline.com/fr/moteur-bldc) les fourni avec encodeur 3 positions pour l'asservir en connaissant la position des phases
+
+## driver
+
+- catalogue de drivers sur [simplefoc](https://docs.simplefoc.com/bldc_drivers)
+- driver simple [stepperonline](https://www.omc-stepperonline.com/fr/controleur-de-moteur-cc-sans-balais-numerique-12v-48vdc-max-15-0a-400w-bld-510b)
+
+## capteur de position
+
+- capteur absolu sur arbre de sortie
+- mesure optique sur un ruban imprimé placé sur la sortie reducteur voir dans le reducteur
+
+- necessite un boitier noir
+
+catalogue de capteurs sur [waveshare](https://www.waveshare.com/wiki/Main_Page)
+
+### capteur intensité optique mono bande
+
+- necessite plusieurs pistes separées
+
+choix
+
+- photo resistance
+
+- [capteur luminosité](https://eu.robotshop.com/fr/products/capteur-lumiere-ambiante-numerique-haute-sensibilite-waveshare-tsl25911-i2c) I2C
+
+### capteur intensité optique multi bande
+
+- permet des pistes confondues (plus compact et plus simple a monter)
+- permet une piste de reference de luminosité pour etre insensible a l'alimentation et vieillissement de la bande
+
+choix
+
+- [capteur RGB + LED](https://www.mouser.fr/ProductDetail/DFRobot/SEN0101?qs=Zcin8yvlhnPAaVRgPGvacA%3D%3D&mgh=1&vip=1) analog, voir [doc](https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/2107/SEN0101_Web.pdf)
+
+- [capteur RGB + LED](https://www.amazon.com/Teyleten-Robot-TCS-34725-TCS34725-Recognition/dp/B087Z3K6P5/145-0111783-5754406?pd_rd_w=U3QIB&content-id=amzn1.sym.e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_p=e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_r=8XWYY363C57F0KZW0FMS&pd_rd_wg=bi5sm&pd_rd_r=2327b693-81b9-4b1a-899b-91aaed7cd432&pd_rd_i=B087Z3K6P5&psc=1) I2C
+
+- [capteur spectral 8ch + LED](https://www.amazon.com/Waveshare-Precision-Compatible-Platforms-Including/dp/B08ZS7JKDD) I2C
+
+- [capteur spectral 8ch + LED](https://www.amazon.com/Visible-Spectrum-Infrared-Spectrometer-arduino/dp/B0DBQKDV67/145-0111783-5754406?pd_rd_w=U3QIB&content-id=amzn1.sym.e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_p=e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_r=8XWYY363C57F0KZW0FMS&pd_rd_wg=bi5sm&pd_rd_r=2327b693-81b9-4b1a-899b-91aaed7cd432&pd_rd_i=B0DBQKDV67&psc=1) I2C
+
