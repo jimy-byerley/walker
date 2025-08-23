@@ -1,6 +1,7 @@
 from madcad import *
 from madcad.joints import *
 
+@cachefunc
 def foot(
 		# overall foot dimensions
 		fore_length = 50,
@@ -381,7 +382,7 @@ def foot(
 		})
 	return Solid(
 		kinematic = kin,
-		leg = Axis(-nail_height*Z, legdir),
+		axis = Axis(-nail_height*Z, Z),
 		)
 		
 

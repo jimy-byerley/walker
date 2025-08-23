@@ -1,12 +1,14 @@
 from madcad import *
 from madcad.kinematic import *
 from madcad.joints import *
+from madcad.scheme import *
 
 m = mat4()
 
-l = 100
-e = 20
-a = 20
+l = 10e1
+e = 2e1
+a = 2e1
+c = 1e1
 kin = Kinematic([
 #	Revolute((-1,0), Axis(a*X, Z)),
 	Revolute((-1,0), Axis(a*X, X)),
@@ -18,8 +20,8 @@ kin = Kinematic([
 	Ball((4,5), -l*Z+l/2*X),
 	], ground=-1)
 
-w = 20
-h = 30
+w = 2e1
+h = 3e1
 joints = []
 places = {
 	'front-right': Axis(+h*X+w*Y, normalize(4*Z+4*X+Y)),
@@ -39,16 +41,18 @@ for name, axis in places.items():
 		Revolute((name+'-foreedge', name+'-foreleg'), Axis(-l/2*Z+l/2*X, Y)),
 		Revolute((name+'-backedge', name+'-traverse'), Axis(-(l/2-e)*Z+e*(0.5*Z+X), Y)),
 		Revolute((name+'-foreedge', name+'-traverse'), Axis(-(l/2)*Z+e*(0.5*Z+X), Y)),
-		Ball((name+'-foreleg', name+'-foot'), -l*Z+l/2*X, O),
+		Ball((name+'-foreleg', name+'-foot'), -l*Z+l/2*X -c*Z, O),
 #		Free((name+'-foot', 'ground'))
 		])
 joints.extend([
-	Weld(('ground', 'front-right-foot'), translate(places['front-right'].origin - l*Z +h*X)),
-	Weld(('ground', 'back-right-foot'), translate(places['back-right'].origin - l*Z +h*X)),
-	Weld(('ground', 'front-left-foot'), translate(places['front-left'].origin - l*Z)),
-	Weld(('ground', 'back-left-foot'), translate(places['back-left'].origin - l*Z)),
-	Planar(('ground', 'chest'), Axis(O,Z)),
-#	Ball(('ground', 'chest'), O),
+	Weld(('ground', 'front-right-foot'), translate(places['front-right'].origin - l*Z +3*h*X +2*w*Y)),
+	Weld(('ground', 'back-right-foot'), translate(places['back-right'].origin - l*Z +1*h*X +2*w*Y)),
+	Weld(('ground', 'front-left-foot'), translate(places['front-left'].origin - l*Z -1*h*X -2*w*Y)),
+	Weld(('ground', 'back-left-foot'), translate(places['back-left'].origin - l*Z -3*h*X -2*w*Y)),
+#	Planar(('ground', 'chest'), Axis(O,Z)),
+#	Prismatic(('ground', 'chest'), Axis(O,Z))
+	Planar(('ground', 'chest'), Axis(O,Y)),
+#	Weld(('ground', 'chest')),
 	])
 kin = Kinematic(joints, ground='ground')
 #kin.solve(maxiter=200)
