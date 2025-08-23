@@ -143,10 +143,12 @@ def ball_bearing(dint, dext=None, h=None, **kwargs):
 		))
 
 def perimeter(f, start, stop, div=128):
+	''' perimeter of the given function discretised by `div` steps between `start` and `stop` '''
 	points = [f(x)  for x in linrange(start, stop, div=div)]
 	return sum(distance(points[i-1], points[i])  for i in range(1, len(points)))
 	
 def flex_args(flex, circle_radius, ratio):
+	''' find the flexspline min and max values satisfying the given perimeter ratio with the given circle '''
 	flex_max = circle_radius
 	circle_perimeter = 2*pi*circle_radius
 	def predicate(flex_min):
@@ -156,6 +158,7 @@ def flex_args(flex, circle_radius, ratio):
 	return flex_max, flex_min
 
 def homogeneous_spacing(flex, start, stop, divs):
+	''' return phases of homogeneously spaced points on the given flexspline function '''
 	def cost(phases):
 		points = np.array([
 			distance(
@@ -172,39 +175,13 @@ def homogeneous_spacing(flex, start, stop, divs):
 	return phases
 
 def dual_crown_meshing(circle_radius, circle_teeth):
-	# ellipsis
-	# def flex(a, b, phase):
-		# return vec2(a*cos(phase), b*sin(phase))
-	# def dflex(a, b, phase):
-	# 	return vec2(-a*sin(phase), b*cos(phase))
-	
-	# offseted ellipsis
-	# def flex1(a, b, phase):
-	# 	return vec2(a*cos(phase), b*sin(phase))
-	# def dflex1(a, b, phase):
-	# 	return vec2(-a*sin(phase), b*cos(phase))
-	# e = maxradius*0.5
-	# def flex(a, b, phase):
-	# 	return flex1(a-e, b-e, phase) - perp(normalize(dflex1(a-e, b-e, phase))) * e
-	# def dflex(a, b, phase):
-	# 	dx = 1e-6
-	# 	return (flex(a,b,phase+dx) - flex(a,b,phase-dx)) / (2*dx)
-	
+	''' return the teeth of circular and flex spline of the gearbox '''
 	# sine deformation wave
 	def flex(a, b, phase):
 		return vec2(cos(phase), sin(phase)) * mix(b, a, linstep(-1, 1, cos(2*phase)))
 	def dflex(a, b, phase):
 		dx = 1e-6
 		return (flex(a,b,phase+dx) - flex(a,b,phase-dx)) / (2*dx)
-
-	# ramps
-	#def flex(a, b, phase):
-	#	quater = phase % pi
-	#	if quater > pi/2:	quater = pi-quater
-	#	return vec2(cos(phase), sin(phase)) * mix(a, b, quater*2/pi)
-	#def dflex(a, b, phase):
-	#	dx = 1e-6
-	#	return (flex(a, b, phase) - flex(a, b, phase-dx))/dx
 
 	flex_teeth = circle_teeth-2
 	flex_mean = flex_teeth/circle_teeth * circle_radius
@@ -269,11 +246,13 @@ def dual_crown_housing_guided(
 		gap=0.2, shell_thickness=None, hole=None,
 		out_clearance=0, in_clearance=0, 
 		details=True):
+	''' gearbox housing for two crowns with a bearing and closed box '''
 	if not shell_thickness:
 		shell_thickness = stceil(0.03 * rext)
 	if not dscrew_in:
 		dscrew_in = stceil(0.6 * dscrew_out)
 
+	# get bounds for the teeth
 	in_zmin = crown_in.box().min.z
 	in_zmax = crown_in.box().max.z
 	in_rmin, in_rmax = minmax_radius(crown_in.points)
@@ -298,12 +277,6 @@ def dual_crown_housing_guided(
 		ext = Solid(),
 		int = Solid(),
 		)
-	input.ext.perimeter = Circle(
-		Axis(input.center,Z), 
-		stceil(hole + 1.2*dscrew_in))
-	input.ext.screw = Circle(
-		input.ext.perimeter.axis.transform(input.ext.perimeter.radius*X), 
-		input.dscrew/2)
 	input.int = Circle(
 		Axis(input.center,Z), 
 		hole)
@@ -315,46 +288,25 @@ def dual_crown_housing_guided(
 		ext = Solid(),
 		int = Solid(),
 		)
-	output.ext.perimeter = Circle(
-		axis.transform(bearing_center*Z - bearing_height*0.7*Z), 
-		rext)
-	output.ext.screw = Circle(
-		output.ext.perimeter.axis.transform(output.ext.perimeter.radius*X), 
-		output.dscrew/2)
-	output.int.perimeter = Circle(
-		output.ext.perimeter.axis.transform(-dscrew_out*Z), 
-		stfloor(bearing_rint - 1.2*dscrew_in))
-	output.int.screw = Circle(
-		output.int.perimeter.axis.transform(output.int.perimeter.radius*X), 
-		output.dscrew/2)	
-
 
 	# put screws to hold everything
-	bolts = Solid(
-		output = Solid(),
-		input = Solid(),
-		)
-	holes = Solid(
-		output = Solid(),
-		input = Solid(),
-		)
 	output.ext = circular_screwing(
-		output.ext.perimeter.axis.transform(bearing_height*1.7*Z).flip(), 
-		output.ext.perimeter.radius, 
+		axis.transform(bearing_center*Z + bearing_height*Z).flip(), 
+		rext, 
 		bearing_height*1.7, 
 		dscrew_out, 
 		diameters=2, 
 		hold=bearing_height*0.8*details)
 	output.int= circular_screwing(
-		output.int.perimeter.axis, 
-		output.int.perimeter.radius, 
+		axis.transform(bearing_center*Z - bearing_height*0.7*Z - dscrew_out*Z), 
+		stfloor(bearing_rint - 1.2*dscrew_in), 
 		bearing_height*1.7, 
 		dscrew_out, 
 		diameters=2, 
 		hold=1.3*dscrew_out*details)
 	input.ext = circular_screwing(
-		input.ext.perimeter.axis, 
-		input.ext.perimeter.radius, 
+		Axis(input.center,Z), 
+		stceil(hole + 1.2*dscrew_in),
 		dscrew_in, 
 		dscrew_in, 
 		diameters=2)
@@ -373,6 +325,7 @@ def dual_crown_housing_guided(
 			out_zmin*Z + mix(out_rmin, out_rmax, +1.1)*X + 0.3*(out_rmax-out_rmin)*Z,
 			])))
 
+	# output part and everything attached
 	output_exterior = wire([
 		bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
 		bearing_center - (bearing_height*0.7 + dscrew_out)*Z + mix(bearing_rint, bearing_rext, 0.3)*X,
@@ -404,6 +357,7 @@ def dual_crown_housing_guided(
 			revolution(output_exterior), 
 			output.int.holes)
 
+	# shell and input part and everything attached
 	cut = lambda c: c.center + c.radius*X
 	shell_outside = wire([
 		bearing_center - bearing_height*0.5*Z + mix(bearing_rint, bearing_rext, 0.7)*X,
@@ -499,6 +453,7 @@ def dual_crown_housing_guided(
 		)
 
 def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:float=4, gap=0.2):
+	''' housing for a guide-free gearbox (no bearing, no sealing) just the gearing '''
 	interface = Solid(dscrew = dscrew)
 	interface.perimeter = Circle(Axis(interface.dscrew*Z,Z), rext)
 	interface.screw = Circle(interface.perimeter.axis.transform(interface.perimeter.radius*X), interface.dscrew/2)
@@ -539,6 +494,7 @@ def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:fl
 
 
 def strainwave_circulating(rball, rballs, nballs=None):
+	''' circulating elements (balls and cage) for the flexible bearing of the gearbox '''
 	if nballs is None:
 		nballs = int(floor(2*pi*rballs / (3.3*rball)))
 	
@@ -569,6 +525,7 @@ def strainwave_circulating(rball, rballs, nballs=None):
 		)
 
 def balls_guide_profile(rballs, rball, start, stop):
+	''' profile of the guide track of a ball bearing '''
 	return wire([vec3(rballs + rball*cos(t), 0, 1.08*rball*sin(t))
 		for t in linrange(start, stop, div=10)])
 
@@ -719,7 +676,7 @@ if __name__ == '__madcad__':
 		)
 	
 #	import os
-#	folder = os.path.realpath(__file__+'/../strainwave-gearbox-double-f-{}-{}-{}'.format(
+#	folder = os.path.realpath(__file__+'/../strainwave-gearbox-double-f-{:g}-{:g}-{:g}'.format(
 #		gearbox.rext, 
 #		gearbox.height, 
 #		gearbox.nteeth,
@@ -732,7 +689,7 @@ if __name__ == '__madcad__':
 #	io.write(gearbox.generator, folder+'/generator.stl')
 #	
 #	import os
-#	folder = os.path.realpath(__file__+'/../strainwave-gearbox-double-g-{}-{}-{}'.format(
+#	folder = os.path.realpath(__file__+'/../fab/strainwave-gearbox-double-g-{:g}-{:g}-{:g}'.format(
 #		gearbox.rext, 
 #		gearbox.height, 
 #		gearbox.nteeth,
@@ -740,11 +697,11 @@ if __name__ == '__madcad__':
 #	print(folder)
 #	os.mkdir(folder)
 #	io.write(gearbox.flex, folder+'/flex.stl')
-#	io.write(gearbox.crown_in.output, folder+'/crown_in_output.stl')
-#	io.write(gearbox.crown_in.mid, folder+'/crown_in_mid.stl')
-#	io.write(gearbox.crown_in.input, folder+'/crown_in_input.stl')
-#	io.write(gearbox.crown_out.front, folder+'/crown_out_front.stl')
-#	io.write(gearbox.crown_out.crown, folder+'/crown_out_crown.stl')
+#	io.write(gearbox.shell.hat, folder+'/shell_hat.stl')
+#	io.write(gearbox.shell.mid, folder+'/shell_mid.stl')
+#	io.write(gearbox.shell.front, folder+'/shell_front.stl')
+#	io.write(gearbox.output.front, folder+'/output_front.stl')
+#	io.write(gearbox.output.crown, folder+'/output_crown.stl')
 #	io.write(gearbox.circulating_in.cage, folder+'/cage.stl')
-#	io.write(gearbox.generator, folder+'/generator.stl')
+#	io.write(gearbox.input, folder+'/input.stl')
 #	
