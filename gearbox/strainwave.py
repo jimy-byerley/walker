@@ -99,7 +99,7 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 					offset=radius*0.2*(normalize(x+y*0.5)-z), 
 					text='R {:g}'.format(radius)),
 				screw = note_leading(
-					axis.origin + radius*x, 
+					axis.origin + radius*x + dscrew*0.5*x, 
 					offset=radius*0.2*(x-z), 
 					text='{}x M{:g}x{:g}'.format(div, dscrew, height)),
 				),
@@ -407,24 +407,24 @@ def dual_crown_housing_guided(
 		split_in = square(Axis(bearing_center + bearing_height*0.7*Z, -Z), 1.5*rext)
 		split_out = square(Axis(bearing_center + bearing_height*0.2*Z, Z), 1.5*rext)
 		crown_in = Solid(
-			hat = intersection(shell_body, split_in),
-			mid = intersection(shell_body, split_in.flip() + split_out.flip()),
-			front = intersection(shell_body, split_out),
+			hat = intersection(shell_body, split_in).finish(),
+			mid = intersection(shell_body, split_in.flip() + split_out.flip()).finish(),
+			front = intersection(shell_body, split_out).finish(),
 			bearing = bearing,
 			holds = output.ext.hold,
 			)
 		split = square(Axis(bearing_center - bearing_height*0.2*Z, Z), 2*bearing_rint)
 		crown_out = Solid(
-			crown = intersection(output_body, split.flip()),
-			front = intersection(output_body, split),
+			crown = intersection(output_body, split.flip()).finish(),
+			front = intersection(output_body, split).finish(),
 			holds = output.int.hold,
 			)
 	else:
 		crown_in = Solid(
-			body = shell_body,
+			body = shell_body.finish(),
 			bearing = bearing,
 			)
-		crown_out = Solid(body = output_body)
+		crown_out = Solid(body = output_body.finish())
 
 	return Solid(
 		crown_out = crown_out.update(output.int.interface),
@@ -488,8 +488,8 @@ def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:fl
 		crown_in,
 		)
 	return Solid(
-		crown_in = crown_in_body,
-		crown_out = crown_out_body,
+		crown_in = crown_in_body.finish(),
+		crown_out = crown_out_body.finish(),
 		)
 
 
@@ -530,7 +530,7 @@ def balls_guide_profile(rballs, rball, start, stop):
 		for t in linrange(start, stop, div=10)])
 
 
-#@cachefunc
+@cachefunc
 def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, dscrew = None, guided=True, details=False):
 	if height is None:
 		height = stceil(0.2*rext) # special case for cage height
