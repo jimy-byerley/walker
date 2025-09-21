@@ -1,18 +1,26 @@
-use std::{
+use core::{
     cell::RefCell,
-    rc::Rc,
+    result::Result::*,
+    convert::{From, TryFrom},
+    default::Default,
+    cmp::PartialEq,
+    fmt::Debug,
+    assert,
+    panic,
+    concat,
+    stringify,
 };
 use bilge::prelude::*;
 use crate::i2c::{Slave, Register};
 
 
 /// high level control interface for TCS3472x color sensor
-pub struct TCS3472<I2C: embedded_hal::i2c::I2c> {
-    pub slave: Slave<I2C>,
+pub struct TCS3472<'b, I2C: embedded_hal::i2c::I2c> {
+    pub slave: Slave<'b, I2C>,
 }
-impl<I2C:embedded_hal::i2c::I2c> TCS3472<I2C>
+impl<'b, I2C:embedded_hal::i2c::I2c> TCS3472<'b, I2C>
 {
-    pub fn new(bus: Rc<RefCell<I2C>>, address: u8) -> Self {
+    pub fn new(bus: &'b RefCell<I2C>, address: u8) -> Self {
         Self{slave: Slave::new(bus, address)}
     }
 }

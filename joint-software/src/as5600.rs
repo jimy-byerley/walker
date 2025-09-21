@@ -1,18 +1,26 @@
-use std::{
+use core::{
     cell::RefCell,
-    rc::Rc,
+    result::Result::{self, *},
+    convert::{From, TryFrom},
+    default::Default,
+    cmp::PartialEq,
+    fmt::Debug,
+    assert,
+    panic,
+    concat,
+    stringify,
 };
 use bilge::prelude::*;
 use crate::i2c::{Slave, Register};
 
 
 /// high level control interface to the AS5600 magnetic encoder sensor
-pub struct AS5600<I2C: embedded_hal::i2c::I2c> {
-    pub slave: Slave<I2C>,
+pub struct AS5600<'b, I2C: embedded_hal::i2c::I2c> {
+    pub slave: Slave<'b, I2C>,
 }
-impl<I2C:embedded_hal::i2c::I2c> AS5600<I2C>
+impl<'b, I2C:embedded_hal::i2c::I2c> AS5600<'b, I2C>
 {
-    pub fn new(bus: Rc<RefCell<I2C>>) -> Self {
+    pub fn new(bus: &'b RefCell<I2C>) -> Self {
         Self{slave: Slave::new(bus, ADDRESS)}
     }
     pub fn angle(&mut self) -> Result<f32, I2C::Error> {
