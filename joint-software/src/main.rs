@@ -57,15 +57,15 @@ fn main() -> ! {
     mcpwm.operator0.set_timer(&mcpwm.timer0);
     log::debug!("1");
     // connect operator0 to pin
-    // let mut m0_in0 = mcpwm
-    //     .operator0
-    //     .with_pin_a(peripherals.GPIO6, PwmPinConfig::UP_ACTIVE_HIGH);
-    // let mut m0_in1 = mcpwm
-    //     .operator1
-    //     .with_pin_a(peripherals.GPIO7, PwmPinConfig::UP_ACTIVE_HIGH);
-    // let mut m0_in2 = mcpwm
-    //     .operator2
-    //     .with_pin_a(peripherals.GPIO8, PwmPinConfig::UP_ACTIVE_HIGH);
+    let mut m0_in0 = mcpwm
+        .operator0
+        .with_pin_a(peripherals.GPIO32, PwmPinConfig::UP_ACTIVE_HIGH);
+    let mut m0_in1 = mcpwm
+        .operator1
+        .with_pin_a(peripherals.GPIO33, PwmPinConfig::UP_ACTIVE_HIGH);
+    let mut m0_in2 = mcpwm
+        .operator2
+        .with_pin_a(peripherals.GPIO25, PwmPinConfig::UP_ACTIVE_HIGH);
     log::debug!("2");
     // start timer with timestamp values in the range of 0..=99 and a frequency of 20 kHz;
     mcpwm.timer0.start(
@@ -75,9 +75,9 @@ fn main() -> ! {
     );
     log::debug!("3");
     // pin will be high 50% of the time
-    // m0_in0.set_timestamp(20);
-    // m0_in1.set_timestamp(50);
-    // m0_in2.set_timestamp(70);
+    m0_in0.set_timestamp(20);
+    m0_in1.set_timestamp(50);
+    m0_in2.set_timestamp(70);
 
     // let mut ledc = Ledc::new(peripherals.LEDC);
     // let mut channel0 = ledc.channel(esp_hal::ledc::channel::Number::Channel0, peripherals.GPIO6);
