@@ -145,6 +145,9 @@ donc moteur synchrone.
 ## driver
 
 - catalogue de drivers sur [simplefoc](https://docs.simplefoc.com/bldc_drivers)
+
+  ils ne sont plus disponibles sur le site, mais on peut les trouver sur aliexpress, avec des variantes créées par des groupes chinois
+
 - driver simple [stepperonline](https://www.omc-stepperonline.com/fr/controleur-de-moteur-cc-sans-balais-numerique-12v-48vdc-max-15-0a-400w-bld-510b)
 
 ## capteur de position
@@ -180,4 +183,58 @@ choix
 - [capteur spectral 8ch + LED](https://www.amazon.com/Waveshare-Precision-Compatible-Platforms-Including/dp/B08ZS7JKDD) I2C
 
 - [capteur spectral 8ch + LED](https://www.amazon.com/Visible-Spectrum-Infrared-Spectrometer-arduino/dp/B0DBQKDV67/145-0111783-5754406?pd_rd_w=U3QIB&content-id=amzn1.sym.e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_p=e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_r=8XWYY363C57F0KZW0FMS&pd_rd_wg=bi5sm&pd_rd_r=2327b693-81b9-4b1a-899b-91aaed7cd432&pd_rd_i=B0DBQKDV67&psc=1) I2C
+
+
+
+## BOM
+
+| role    | price | link                                                         |
+| ------- | ----- | ------------------------------------------------------------ |
+| encoder | 12€/3 | https://www.amazon.com/Teyleten-Robot-TCS-34725-TCS34725-Recognition/dp/B087Z3K6P5/145-0111783-5754406?pd_rd_w=U3QIB&content-id=amzn1.sym.e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_p=e56a2492-63c9-43e2-8ff2-0f40df559930&pf_rd_r=8XWYY363C57F0KZW0FMS&pd_rd_wg=bi5sm&pd_rd_r=2327b693-81b9-4b1a-899b-91aaed7cd432&pd_rd_i=B087Z3K6P5&psc=1 |
+| motor   | 19€   | https://www.omc-stepperonline.com/fr/24v-3000rpm-0-08nm-25w-1-80a-42x51mm-moteur-cc-sans-balais-42bya51-24-01 |
+| driver  | 15€/2 | https://www.aliexpress.com/item/1005005066500496.html?spm=a2g0o.order_list.order_list_main.5.33fc5e5bLTqt3y |
+| bearing | 20€   | https://www.aliexpress.com/item/1005005066500496.html?spm=a2g0o.order_list.order_list_main.5.33fc5e5bLTqt3y |
+| TOTAL   | 51€   |                                                              |
+
+
+
+
+
+# rust
+
+install from sources using cargo
+
+```shell
+cargo install espup --locked
+cargo install ldproxy
+cargo install espflash
+espup install
+. ~/export-esp.sh
+```
+
+install prebuilt
+
+```shell
+curl https://github.com/esp-rs/espup/releases/download/v0.15.1/espup-x86_64-unknown-linux-gnu.zip
+curl https://github.com/esp-rs/embuild/releases/download/ldproxy-v0.3.2/ldproxy-x86_64-unknown-linux-gnu.zip
+curl https://github.com/esp-rs/espflash/releases/download/v4.1.0/espflash-x86_64-unknown-linux-gnu.zip
+cd ~/.local/bin
+unzip ...
+
+espup install
+. ~/export-esp.sh
+```
+
+
+
+use it:
+
+```shell
+# create a project with official esp template
+cargo generate esp-rs/esp-idf-template cargo
+# then it is possible to build the repo and run it
+cargo build
+# running needs the esp to be connected
+cargo run
+```
 
