@@ -4,22 +4,26 @@ pub mod as5600;
 pub mod tcs3472;
 // pub mod synchron_motor;
 
+
 use std::{
     rc::Rc,
     cell::RefCell,
 };
-use esp_idf_svc::hal::{
+use esp_idf_hal::{
     i2c::{I2cConfig, I2cDriver},
     ledc::{LedcTimerDriver, LedcDriver, config::TimerConfig},
     peripherals::Peripherals,
     delay::Delay,
     prelude::*,
+    ledc::{LedcDriver, LedcTimerDriver, config::TimerConfig},
 };
 
-fn main() {
-    esp_idf_svc::sys::link_patches();
-    esp_idf_svc::log::EspLogger::initialize_default();
 
+fn main() {
+    esp_idf_hal::sys::link_patches();
+//     esp_idf_hal::log::EspLogger::initialize_default();
+
+    println!("1");
     let peripherals = Peripherals::take().unwrap();
 
 
@@ -35,6 +39,26 @@ fn main() {
 
     let sda = peripherals.pins.gpio19;
     let scl = peripherals.pins.gpio18;
+
+    let m0i0 = peripherals.pins.gpio32;
+    let m0i1 = peripherals.pins.gpio33;
+    let m0i2 = peripherals.pins.gpio25;
+
+    println!("2");
+    let timer = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::default().frequency(25.kHz().into())).expect("creating timer driver");
+    println!("2.5");
+    let mut pwm0 = LedcDriver::new(peripherals.ledc.channel0, &timer, m0i0).expect("creating ledc driver");
+    println!("2.5.1");
+    let mut pwm1 = LedcDriver::new(peripherals.ledc.channel1, &timer, m0i1).unwrap();
+    println!("2.5.2");
+    let mut pwm2 = LedcDriver::new(peripherals.ledc.channel2, &timer, m0i2).unwrap();
+
+    println!("3");
+    pwm0.set_duty(pwm0.get_max_duty() * 1 / 4).unwrap();
+    pwm1.set_duty(pwm1.get_max_duty() * 2 / 4).unwrap();
+    pwm2.set_duty(pwm2.get_max_duty() * 3 / 4).unwrap();
+
+    println!("4");
     let delay = Delay::default();
     let bus = Rc::new(RefCell::new(
         I2cDriver::new(peripherals.i2c0, sda, scl, &I2cConfig::new().baudrate(KiloHertz(400).into())).unwrap()
@@ -59,3 +83,39 @@ fn main() {
         delay.delay_ms(100);
     }
 }
+
+
+
+// use esp_idf_hal::delay::FreeRtos;
+// use esp_idf_hal::ledc::*;
+// use esp_idf_hal::peripherals::Peripherals;
+// use esp_idf_hal::units::*;
+// 
+// fn main() -> anyhow::Result<()> {
+//     esp_idf_hal::sys::link_patches();
+// 
+//     println!("Configuring output channel");
+// 
+//     let peripherals = Peripherals::take()?;
+//     let mut channel = LedcDriver::new(
+//         peripherals.ledc.channel0,
+//         LedcTimerDriver::new(
+//             peripherals.ledc.timer0,
+//             &config::TimerConfig::new().frequency(25.kHz().into()),
+//         )?,
+//         peripherals.pins.gpio32,
+//     )?;
+// 
+//     println!("Starting duty-cycle loop");
+// 
+//     let max_duty = channel.get_max_duty();
+//     for numerator in [0, 1, 2, 3, 4, 5].iter().cycle() {
+//         println!("Duty {numerator}/5");
+//         channel.set_duty(max_duty * numerator / 5)?;
+//         FreeRtos::delay_ms(2000);
+//     }
+// 
+//     loop {
+//         FreeRtos::delay_ms(1000);
+//     }
+// }
