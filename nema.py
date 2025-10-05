@@ -26,9 +26,9 @@ def coupling_key(diameter, length, depth=None):
 def square(width, spacing, dscrew, lscrew, dhub, hhub):
 	screws = [
 		Circle(Axis(p, Z), dscrew/2)
-		for p in parallelogram(X*spacing, Y*spacing, align=0.5).points]
+		for p in parallelogram(X*spacing, Y*spacing, alignment=0.5).points]
 	hub = Circle(Axis(O+Z*hhub, Z), dhub/2)
-	outline = parallelogram(X*width, Y*width, align=0.5, fill=False)
+	outline = parallelogram(X*width, Y*width, alignment=0.5, fill=False)
 	chamfer(outline, list(range(4)), width=width*0.1)
 	return Solid(
 			width=width, spacing=spacing, dscrew=dscrew, lscrew=lscrew, dhub=dhub, hhub=hhub, 

@@ -24,7 +24,7 @@ def grooves_profile(radius, repetitions:int=16, alignment=0.5, angle=radians(40)
 	'''
 	h = radius/repetitions / tan(angle)
 	def profile(t):
-		return (radius+(0.5-alignment)*h+h*sin(repetitions*t)) * vec3(cos(t), sin(t), 0)
+		return (radius+(0.5-alignment)*h+h*cos(repetitions*t)) * vec3(cos(t), sin(t), 0)
 	c = Circle(Axis(O,Z), radius)
 	return wire([ profile(t)
 		for t in linrange(0, 2*pi, div=12*repetitions, end=False) ]).close()
@@ -83,9 +83,9 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 	enlarge = 1.05
 	diameters_list = []
 	for i in range(diameters):
-		d = enlarge*stfloor(0.8**i * dscrew)/2
+		d = enlarge*stfloor(0.8**i * dscrew)
 		diameters_list.append(d)
-		holes += cylinder(a-gap, b+gap, d) .transform(rotatearound(i*1.4*dscrew/radius, axis))
+		holes += cylinder(a-gap, b+gap, d/2) .transform(rotatearound(i*1.4*dscrew/radius, axis))
 	holes = repeataround(holes, 8, axis).flip()
 	screwing = Solid(
 		interface = Solid(
@@ -278,7 +278,7 @@ def dual_crown_housing_guided(
 		int = Solid(),
 		)
 	input.int = Circle(
-		Axis(input.center,Z), 
+		Axis(input.center, Z).offset(shell_thickness), 
 		hole)
 	
 	# guiding primitives for output mechanical interface
@@ -293,23 +293,23 @@ def dual_crown_housing_guided(
 	output.ext = circular_screwing(
 		axis.transform(bearing_center*Z + bearing_height*Z).flip(), 
 		rext, 
-		bearing_height*1.7, 
-		dscrew_out, 
-		diameters=2, 
-		hold=bearing_height*0.8*details)
+		height = bearing_height*1.7, 
+		dscrew = dscrew_out, 
+		diameters = 2, 
+		hold = bearing_height*0.8*details)
 	output.int= circular_screwing(
 		axis.transform(bearing_center*Z - bearing_height*0.7*Z - dscrew_out*Z), 
-		stfloor(bearing_rint - 1.2*dscrew_in), 
-		bearing_height*1.7, 
-		dscrew_out, 
-		diameters=2, 
-		hold=1.3*dscrew_out*details)
+		radius = stfloor(bearing_rint - 1.2*dscrew_in), 
+		height = bearing_height*1.7, 
+		dscrew = dscrew_out, 
+		diameters = 2, 
+		hold = 1.3*dscrew_out*details)
 	input.ext = circular_screwing(
 		Axis(input.center,Z), 
-		stceil(hole + 1.2*dscrew_in),
-		dscrew_in, 
-		dscrew_in, 
-		diameters=2)
+		radius = stceil(hole + 1.2*dscrew_in),
+		height = shell_thickness,
+		dscrew = dscrew_in,  
+		diameters = 2)
 	
 	# put stops on teeth extremities
 	crown_in = union(
@@ -665,7 +665,7 @@ strainwave = strainwave_dual_crown
 
 if __name__ == '__madcad__':
 #	settings.resolution = ('sqradm', 0.2)
-#	settings.resolution = ('sqradm', 0.4)
+#	settings.resolution = ('sqradm', 0.3)
 	settings.resolution = ('sqradm', 0.8)
 	
 	gearbox = strainwave_dual_crown(
@@ -674,34 +674,6 @@ if __name__ == '__madcad__':
 		guided = True,
 		details = True,
 		)
-	
-#	import os
-#	folder = os.path.realpath(__file__+'/../strainwave-gearbox-double-f-{:g}-{:g}-{:g}'.format(
-#		gearbox.rext, 
-#		gearbox.height, 
-#		gearbox.nteeth,
-#		))
-#	os.mkdir(folder)
-#	io.write(gearbox.flex, folder+'/flex.stl')
-#	io.write(gearbox.crown_in, folder+'/crown_in.stl')
-#	io.write(gearbox.crown_out, folder+'/crown_ou.stl')
-#	io.write(gearbox.circulating_in.cage, folder+'/cage.stl')
-#	io.write(gearbox.generator, folder+'/generator.stl')
-#	
-#	import os
-#	folder = os.path.realpath(__file__+'/../fab/strainwave-gearbox-double-g-{:g}-{:g}-{:g}'.format(
-#		gearbox.rext, 
-#		gearbox.height, 
-#		gearbox.nteeth,
-#		))
-#	print(folder)
-#	os.mkdir(folder)
-#	io.write(gearbox.flex, folder+'/flex.stl')
-#	io.write(gearbox.shell.hat, folder+'/shell_hat.stl')
-#	io.write(gearbox.shell.mid, folder+'/shell_mid.stl')
-#	io.write(gearbox.shell.front, folder+'/shell_front.stl')
-#	io.write(gearbox.output.front, folder+'/output_front.stl')
-#	io.write(gearbox.output.crown, folder+'/output_crown.stl')
-#	io.write(gearbox.circulating_in.cage, folder+'/cage.stl')
-#	io.write(gearbox.input, folder+'/input.stl')
-#	
+
+#	from utils import export
+#	export(gearbox, f"{__file__}/../out/gearbox-strainwave-double-f", (gearbox.rext, gearbox.height, gearbox.nteeth))
