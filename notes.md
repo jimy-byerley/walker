@@ -238,3 +238,25 @@ cargo build
 cargo run
 ```
 
+
+
+## wiring
+
+![wiring](schemes-wiring.svg)
+
+magnetic encoder:
+
+- SDA
+- SCL
+- 3.3V
+- GND
+
+motor phases
+
+- U: orange
+- V: green
+- W: brown
+
+## control
+
+![FOC](schemes-control.svg)
