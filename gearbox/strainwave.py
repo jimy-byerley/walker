@@ -530,8 +530,8 @@ def balls_guide_profile(rballs, rball, start, stop):
 		for t in linrange(start, stop, div=10)])
 
 
-@cachefunc
-def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3, dscrew = None, guided=True, details=False):
+#@cachefunc
+def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.5, ball_play = 0.2, axial_play = 0.3, rball = 3, dscrew = None, guided=True, details=False):
 	if height is None:
 		height = stceil(0.2*rext) # special case for cage height
 		cage_height = rball*2.2
@@ -542,7 +542,6 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3,
 		dscrew_in = stceil(rext*0.08)
 
 	if guided:
-		axial_play = 0.3  # axial play
 		meshing = dual_crown_meshing(
 			circle_radius = (rext-1.2*dscrew_out)*0.8, 
 			circle_teeth = nteeth)	
@@ -587,8 +586,7 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3,
 		)
 
 	if details:
-		rballs = rballs = meshing.flex_mean - rball - thickness
-		ball_play = 0.05
+		rballs = rballs = meshing.flex_mean - thickness - rball
 		
 		flex_body = revolution(wire([
 			meshing.flex_mean*X + (height-axial_play)*Z + 3*meshing.teeth.height*X - meshing.teeth.height*Z,
@@ -604,8 +602,8 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.9, rball = 3,
 		generator_body = wire([
 			(rballs-rball*1.1)*X + height*1.1*Z,
 			balls_guide_profile(rballs, rball+ball_play, radians(-40)+pi, radians(90)+pi).transform((height-cage_height)*Z),
-			(rballs+0.2*rball)*X + (height-cage_height-1.1*rball)*Z,
-			(rballs+0.2*rball)*X,
+			(rballs+0.4*rball)*X + (height-cage_height-1.1*rball)*Z,
+			(rballs+0.4*rball)*X,
 			])
 		
 		generator_body = extrans(generator_body.transform(-meshing.flex_mean*X), (
@@ -665,8 +663,8 @@ strainwave = strainwave_dual_crown
 
 if __name__ == '__madcad__':
 #	settings.resolution = ('sqradm', 0.2)
-#	settings.resolution = ('sqradm', 0.3)
-	settings.resolution = ('sqradm', 0.8)
+	settings.resolution = ('sqradm', 0.3)
+#	settings.resolution = ('sqradm', 0.8)
 	
 	gearbox = strainwave_dual_crown(
 		rext = 50,
@@ -675,5 +673,5 @@ if __name__ == '__madcad__':
 		details = True,
 		)
 
-#	from utils import export
-#	export(gearbox, f"{__file__}/../out/gearbox-strainwave-double-f", (gearbox.rext, gearbox.height, gearbox.nteeth))
+	from utils import export
+	export(gearbox, f"{__file__}/../out/gearbox-strainwave-double-v2-g", (gearbox.rext, gearbox.height, gearbox.nteeth))

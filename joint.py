@@ -190,7 +190,7 @@ def joint():
 		body = revolution(wire([
 			gearbox.output.perimeter.center + motor.interface.width/2*X + overlap*X,
 			bottom + motor.interface.width/2*X - overlap*X,
-			bottom + motor.interface.width/2*X + (thickness+offset)*X + (thickness+offset)*Z,
+			bottom + motor.interface.width/2*X - overlap*X + (thickness+offset)*X + (thickness+offset)*Z,
 			
 			overinterface + motor.interface.width/2*X + (thickness+offset)*X,
 			overinterface + gearbox.output.perimeter.radius*X + gearbox.output.diameters[0]*1.5*X,
