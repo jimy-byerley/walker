@@ -11,11 +11,10 @@ use std::{
 };
 use esp_idf_hal::{
     i2c::{I2cConfig, I2cDriver},
-    ledc::{LedcTimerDriver, LedcDriver, config::TimerConfig},
+    ledc::{LedcDriver, LedcTimerDriver, config::TimerConfig},
     peripherals::Peripherals,
     delay::Delay,
     prelude::*,
-    ledc::{LedcDriver, LedcTimerDriver, config::TimerConfig},
 };
 
 
@@ -25,16 +24,6 @@ fn main() {
 
     println!("1");
     let peripherals = Peripherals::take().unwrap();
-
-
-    let m0_in1 = peripherals.pins.gpio6;
-    let timer_driver = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::default().frequency(25.kHz().into())).unwrap();
-    let mut driver = LedcDriver::new(peripherals.ledc.channel0, timer_driver, m0_in1).unwrap();
-
-    let max_duty = driver.get_max_duty();
-    log::info!("max duty {}", max_duty);
-    driver.set_duty(max_duty * 3 / 4).unwrap();
-
 
 
     let sda = peripherals.pins.gpio19;
@@ -53,11 +42,6 @@ fn main() {
     println!("2.5.2");
     let mut pwm2 = LedcDriver::new(peripherals.ledc.channel2, &timer, m0i2).unwrap();
 
-    println!("3");
-    pwm0.set_duty(pwm0.get_max_duty() * 1 / 4).unwrap();
-    pwm1.set_duty(pwm1.get_max_duty() * 2 / 4).unwrap();
-    pwm2.set_duty(pwm2.get_max_duty() * 3 / 4).unwrap();
-
     println!("4");
     let delay = Delay::default();
     let bus = Rc::new(RefCell::new(
@@ -66,21 +50,44 @@ fn main() {
 
     let mut slave = crate::i2c::Slave::new(bus.clone(), as5600::ADDRESS);
 
-    use bilge::prelude::u12;
-    slave.write(as5600::registers::ZPOS, u12::from_u16(0)).unwrap();
-    slave.write(as5600::registers::MPOS, u12::from_u16(0b111111111111)).unwrap();
+    slave.write(as5600::registers::ZPOS, as5600::registers::Angle::from(0)).unwrap();
+    slave.write(as5600::registers::MPOS, as5600::registers::Angle::from(0b111111111111)).unwrap();
 
+    let amplitude: f32 = 0.9;
+    let mut angle: f32 = 0.;
+    let mut i = 0;
     loop {
         // log::info!("angle: {:.3e}", rotor.angle().unwrap());
-        log::info!("read {} {} {:#?} {:#?} {} {}",
-            slave.read(as5600::registers::RAW_ANGLE).unwrap(),
-            slave.read(as5600::registers::ANGLE).unwrap(),
-            slave.read(as5600::registers::STATUS).unwrap(),
-            slave.read(as5600::registers::CONF).unwrap(),
-            slave.read(as5600::registers::ZPOS).unwrap(),
-            slave.read(as5600::registers::MPOS).unwrap(),
-        );
-        delay.delay_ms(100);
+//         log::info!("read {} {} {:#?} {:#?} {} {}",
+//             slave.read(as5600::registers::RAW_ANGLE).unwrap(),
+//             slave.read(as5600::registers::ANGLE).unwrap(),
+//             slave.read(as5600::registers::STATUS).unwrap(),
+//             slave.read(as5600::registers::CONF).unwrap(),
+//             slave.read(as5600::registers::ZPOS).unwrap(),
+//             slave.read(as5600::registers::MPOS).unwrap(),
+//         );
+        
+        angle += 0.02;
+        i += 1;
+        if i % 4 == 0 {
+            println!("angle {:.3e}  {:16b}", 
+                angle, 
+//                 (u16::from(slave.read(as5600::registers::RAW_ANGLE).unwrap()) as f32)/((1<<12) as f32),
+                slave.read(as5600::registers::RAW_ANGLE).unwrap().value(),
+                );
+        }
+        use std::f32::consts::PI;
+        pwm0.set_duty((
+            (pwm0.get_max_duty() as f32) * amplitude * (1. + (angle + 0./3.*PI).sin())/2.
+            ) as _).unwrap();
+        pwm1.set_duty((
+            (pwm1.get_max_duty() as f32) * amplitude * (1. + (angle + 2./3.*PI).sin())/2.
+            ) as _).unwrap();
+        pwm2.set_duty((
+            (pwm1.get_max_duty() as f32) * amplitude * (1. + (angle + 4./3.*PI).sin())/2.
+            ) as _).unwrap();
+        
+        delay.delay_ms(20);
     }
 }
 
