@@ -25,30 +25,28 @@ fn main() {
     println!("1");
     let peripherals = Peripherals::take().unwrap();
 
-
     let sda = peripherals.pins.gpio19;
     let scl = peripherals.pins.gpio18;
-
+    let m0en = peripherals.pins.gpio22;
     let m0i0 = peripherals.pins.gpio32;
     let m0i1 = peripherals.pins.gpio33;
     let m0i2 = peripherals.pins.gpio25;
 
-    println!("2");
-    let timer = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::default().frequency(25.kHz().into())).expect("creating timer driver");
-    println!("2.5");
-    let mut pwm0 = LedcDriver::new(peripherals.ledc.channel0, &timer, m0i0).expect("creating ledc driver");
-    println!("2.5.1");
-    let mut pwm1 = LedcDriver::new(peripherals.ledc.channel1, &timer, m0i1).unwrap();
-    println!("2.5.2");
-    let mut pwm2 = LedcDriver::new(peripherals.ledc.channel2, &timer, m0i2).unwrap();
-
-    println!("4");
-    let delay = Delay::default();
+    
     let bus = Rc::new(RefCell::new(
         I2cDriver::new(peripherals.i2c0, sda, scl, &I2cConfig::new().baudrate(KiloHertz(400).into())).unwrap()
     ));
+    let foc = Foc::new(
+        bus,
+        peripherals.pins.gpio22,
+        peripherals.ledc.timer0,
+        [peripherals.pins.gpio32, peripherals.pins.gpio33, peripherals.pins.gpio25],
+        peripherals.adc1,
+        [peripherals.pins.gpiovp, peripherals.pins.gpiovn],
+        )?;
 
-    let mut slave = crate::i2c::Slave::new(bus.clone(), as5600::ADDRESS);
+    println!("4");
+    let delay = Delay::default();
 
     slave.write(as5600::registers::ZPOS, as5600::registers::Angle::from(0)).unwrap();
     slave.write(as5600::registers::MPOS, as5600::registers::Angle::from(0b111111111111)).unwrap();

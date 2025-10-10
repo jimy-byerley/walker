@@ -82,11 +82,6 @@ impl<T: ByteArray> WriteBuffer<T> {
 }
 
 
-// pub trait Pack<const N: usize> {
-//     fn to_bytes(self) -> [u8; N];
-//     fn from_bytes(bytes: [u8; N]) -> Self;
-// }
-
 #[macro_export]
 macro_rules! pack_bilge {
     ($t:ty) => {
@@ -111,95 +106,5 @@ macro_rules! pack_bilge {
                 <$t>::from(<$t as bilge::Bitsized>::ArbitraryInt::from_be_bytes(bytes))
             }
         }
-    
-    
-//         impl packbytes::ToBytes for $t {
-//             type Bytes = [u8; core::mem::size_of::<$t>()];
-//             
-//             #[allow(unnecessary_transmutes)]
-//             fn to_le_bytes(self) -> Self::Bytes {
-// //                 <$t as bilge::Bitsized>::ArbitraryInt::from(self).value().to_be_bytes()
-//                 let _ = <$t as Bitsized>::MAX;
-//                 let mut bytes = unsafe {core::mem::transmute::<Self, Self::Bytes>(self)};
-//                 if cfg!(target_endian = "big") {
-//                     const N: usize = core::mem::size_of::<$t>();
-//                     for i in 0 .. N/2 {
-//                         (bytes[i], bytes[N-i]) = (bytes[N-i], bytes[i]);
-//                     }
-//                 }
-//                 bytes
-//             }
-//             #[allow(unnecessary_transmutes)]
-//             fn to_be_bytes(self) -> Self::Bytes {
-// //                 <$t as bilge::Bitsized>::ArbitraryInt::from(self).value().to_be_bytes()
-//                 let _ = <$t as Bitsized>::MAX;
-//                 let mut bytes = unsafe {core::mem::transmute::<Self, Self::Bytes>(self)};
-//                 if cfg!(target_endian = "little") {
-//                     const N: usize = core::mem::size_of::<$t>();
-//                     for i in 0 .. N/2 {
-//                         (bytes[i], bytes[N-i]) = (bytes[N-i], bytes[i]);
-//                     }
-//                 }
-//                 bytes
-//             }
-//         }
-//         impl packbytes::FromBytes for $t {
-//             #[allow(unnecessary_transmutes)]
-//             fn from_le_bytes(mut bytes: [u8; core::mem::size_of::<$t>()]) -> $t {
-// //                 use bilge::Bitsized;
-// //                 <$t>::from(<$t as bilge::Bitsized>::ArbitraryInt::new_unchecked(<$t as bilge::Bitsized>::ArbitraryInt::T::from_be_bytes(bytes)))
-//                 if cfg!(target_endian = "little") {
-//                     for i in 0 .. N/2 {
-//                         (bytes[i], bytes[N-i]) = (bytes[N-i], bytes[i]);
-//                     }
-//                 }
-//                 unsafe {core::mem::transmute::<[u8; N], $t>(bytes)}
-//             }
-//         }
-    
-//         impl crate::i2c::Pack<{ core::mem::size_of::<$t>() }> for $t {
-//             #[allow(unnecessary_transmutes)]
-//             fn to_bytes(self) -> [u8; core::mem::size_of::<$t>()] {
-// //                 <$t as bilge::Bitsized>::ArbitraryInt::from(self).value().to_be_bytes()
-//                 let _ = <$t as Bitsized>::MAX;
-//                 const N: usize = core::mem::size_of::<$t>();
-//                 let mut bytes = unsafe {core::mem::transmute::<Self, [u8; N]>(self)};
-//                 if cfg!(target_endian = "little") {
-//                     for i in 0 .. N/2 {
-//                         (bytes[i], bytes[N-i]) = (bytes[N-i], bytes[i]);
-//                     }
-//                 }
-//                 bytes
-//             }
-//             #[allow(unnecessary_transmutes)]
-//             fn from_bytes(mut bytes: [u8; core::mem::size_of::<$t>()]) -> $t {
-// //                 use bilge::Bitsized;
-// //                 <$t>::from(<$t as bilge::Bitsized>::ArbitraryInt::new_unchecked(<$t as bilge::Bitsized>::ArbitraryInt::T::from_be_bytes(bytes)))
-//                 const N: usize = core::mem::size_of::<$t>();
-//                 if cfg!(target_endian = "little") {
-//                     for i in 0 .. N/2 {
-//                         (bytes[i], bytes[N-i]) = (bytes[N-i], bytes[i]);
-//                     }
-//                 }
-//                 unsafe {core::mem::transmute::<[u8; N], $t>(bytes)}
-//             }
-//         }
     };
 }
-
-// pack_int!(u1);
-// pack_int!(u2);
-// pack_int!(u3);
-// pack_int!(u4);
-// pack_int!(u5);
-// pack_int!(u6);
-// pack_int!(u7);
-// pack_int!(u8);
-// pack_int!(u9);
-// pack_int!(u10);
-// pack_int!(u11);
-// pack_int!(u12);
-// pack_int!(u13);
-// pack_int!(u14);
-// pack_int!(u15);
-// pack_int!(u16);
