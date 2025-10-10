@@ -246,10 +246,10 @@ cargo run
 
 magnetic encoder:
 
-- SDA
-- SCL
-- 3.3V
-- GND
+- SDA: green
+- SCL: yellow
+- 3.3V: blue
+- GND: purple
 
 motor phases
 
@@ -260,3 +260,6 @@ motor phases
 ## control
 
 ![FOC](schemes-control.svg)
+
+- rotation matrix of rotor  =$R$
+- phases to stator transform = $P$ 
