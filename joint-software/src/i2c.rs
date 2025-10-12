@@ -1,7 +1,6 @@
-use std::{
+use core::{
     marker::PhantomData,
     cell::RefCell,
-    rc::Rc,
     ops::DerefMut,
 };
 use embedded_hal::i2c::I2c;
@@ -20,16 +19,16 @@ impl<T> Register<T> {
 }
 
 /// high level representation of i2c slave, with some caching to optimize commands sending
-pub struct Slave<B> {
+pub struct Slave<'b, B> {
     /// i2c driver for exchanging memory commands
-    bus: Rc<RefCell<B>>,
+    bus: &'b RefCell<B>,
     /// slave address
     slave: u8,
     /// pointer currently set in slave
     pointer: Option<u8>,
 }
-impl<B: I2c> Slave<B> {
-    pub fn new(bus: Rc<RefCell<B>>, slave: u8) -> Self {
+impl<'b, B: I2c> Slave<'b, B> {
+    pub fn new(bus: &'b RefCell<B>, slave: u8) -> Self {
         Self{bus, slave, pointer:None}
     }
 

@@ -15,12 +15,16 @@ bilge = "0.3"
 packbytes = {version="0.2", default-features=false}
 nalgebra = {version="0.33", default-features=false}
 
+
 esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32"] }
 esp-hal                = { version = "=1.0.0-rc.0", features = ["esp32", "log-04", "unstable"] }
 esp-backtrace          = { version = "0.17", features = ["esp32", "println", "colors", "panic-handler", "exception-handler"]}
+esp-hal-embassy        = { version = "0.9", features = ["esp32", "executors", "log-04"] }
 esp-println            = { version = "0.15", features = ["esp32", "log-04"] }
 esp-alloc = "0.8"
 critical-section = "1.2"
+embassy-executor = "0.9.1"
+embassy-time = "0.5.0"
 
 
 [profile.dev]
