@@ -3,7 +3,7 @@ use core::{
     cell::RefCell,
     ops::DerefMut,
 };
-use embedded_hal::i2c::I2c;
+use embedded_hal_async::i2c::I2c;
 use packbytes::{FromBytes, ToBytes, ByteArray};
 
 
@@ -36,30 +36,30 @@ impl<'b, B: I2c> Slave<'b, B> {
     pub fn address(&self) -> u8 {self.slave}
 
     /// read given register's current value
-    pub fn read<T:FromBytes>(&mut self, register: Register<T>) -> Result<T, B::Error>
+    pub async fn read<T:FromBytes>(&mut self, register: Register<T>) -> Result<T, B::Error>
     {
         let mut dst = T::Bytes::zeroed();
         let mut bus = self.bus.borrow_mut();
         let bus = bus.deref_mut();
         if Some(register.address) == self.pointer {
-            bus.read(self.slave, dst.as_mut())?;
+            bus.read(self.slave, dst.as_mut()).await?;
         }
         else {
             self.pointer.replace(register.address);
             bus.write_read(self.slave,
                 WriteBuffer{address: register.address, value: []}.as_slice(),
                 dst.as_mut(),
-            )?;
+            ).await?;
         }
         Ok(T::from_bytes(dst))
     }
     /// write given register
-    pub fn write<T:ToBytes>(&mut self, register: Register<T>, value: T) -> Result<(), B::Error>
+    pub async fn write<T:ToBytes>(&mut self, register: Register<T>, value: T) -> Result<(), B::Error>
     {
         let mut bus = self.bus.borrow_mut();
         let bus = bus.deref_mut();
         self.pointer.replace(register.address);
-        bus.write(self.slave, WriteBuffer{address:register.address, value: value.to_be_bytes()}.as_slice())?;
+        bus.write(self.slave, WriteBuffer{address:register.address, value: value.to_be_bytes()}.as_slice()).await?;
         Ok(())
     }
 }

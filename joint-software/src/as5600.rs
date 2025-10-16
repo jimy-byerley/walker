@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 use bilge::prelude::*;
+use embedded_hal_async::i2c::I2c;
 use crate::i2c::{Slave, Register};
 use crate::pack_bilge;
 
@@ -8,16 +9,17 @@ use crate::pack_bilge;
 pub struct As5600<'b, I2C> {
     pub slave: Slave<'b, I2C>,
 }
-impl<'b, I2C:embedded_hal::i2c::I2c> As5600<'b, I2C>
+impl<'b, I2C:I2c> As5600<'b, I2C>
 {
     pub fn new(bus: &'b RefCell<I2C>) -> Self {
         Self{slave: Slave::new(bus, ADDRESS)}
     }
-    pub fn angle(&mut self) -> Result<f32, I2C::Error> {
-        Ok(f32::from(u16::from(self.slave.read(registers::ANGLE)?.value())) / f32::from(1u16<<12))
+    pub async fn angle(&mut self) -> Result<f32, I2C::Error> {
+        let angle = self.slave.read(registers::ANGLE).await?.value();
+        Ok(f32::from(u16::from(angle)) / f32::from(1u16<<12))
     }
-    pub fn check(&mut self) -> Result<(), Error<I2C::Error>> {
-        let status = self.slave.read(registers::STATUS) .map_err(|e| Error::I2c(e))?;
+    pub async fn check(&mut self) -> Result<(), Error<I2C::Error>> {
+        let status = self.slave.read(registers::STATUS).await .map_err(|e| Error::I2c(e))?;
         if !status.magnet_detected() {Err(Error::Sensor("magnet not detected"))}
         else if status.magnet_too_high() {Err(Error::Sensor("maximum too strong"))}
         else if status.magnet_too_low() {Err(Error::Sensor("magnet too weak"))}
