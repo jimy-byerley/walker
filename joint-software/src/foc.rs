@@ -68,7 +68,7 @@ impl<'d, D:Driver> Foc<'d, D> {
         let current_field = self.transform.phases_to_rotor(current_currents);
         let (current_torque, target_voltage) = self.control.step(current_field, target_torque, self.power_voltage);
         let target_voltages = self.transform.rotor_to_phases(target_voltage);
-        let target_modulations = clamp_voltage(target_voltages / self.power_voltage + 0.5, (0., 1.));
+        let target_modulations = clamp_voltage(target_voltages / self.power_voltage + SVector::repeat(0.5), (0., 1.));
         self.driver.set_modulations(target_modulations);
         State {
             position: current_position,
@@ -86,7 +86,7 @@ impl<'d, D:Driver> Foc<'d, D> {
             let current_field = self.transform.phases_to_rotor(current_currents);
             let (current_torque, target_voltage) = self.control.step(current_field, torque, self.power_voltage);
             let target_voltages = self.transform.rotor_to_phases(target_voltage);
-            let target_modulations = clamp_voltage(target_voltages / self.power_voltage + 0.5, (0., 1.));
+            let target_modulations = clamp_voltage(target_voltages / self.power_voltage + SVector::repeat(0.5), (0., 1.));
             self.driver.set_modulations(target_modulations);
             // wait for position to stabilize
             todo!();
@@ -106,10 +106,12 @@ pub struct SpaceVectorTransform<const N: usize> {
 }
 impl<const N: usize> SpaceVectorTransform<N> {
     pub fn new() -> Self {
-        let phases = SMatrix::<Float, 2, N>::from_array_storage((0 .. N).map(|i| {
+        let mut phases = SMatrix::<Float, 2, N>::zeros();
+        for i in 0 .. N {
             let angle = Float::PI() * (i as Float) / (N as Float);
-            Vector2::new(angle.cos(), angle.sin())
-            }).collect());
+            phases[(0,i)] = angle.cos();
+            phases[(1,i)] = angle.sin();
+        }
         Self {
             rotor_to_stator: Matrix::from_element(Float::NAN),
             phases_to_stator: phases,
@@ -133,9 +135,9 @@ pub fn clamp_voltage(voltages: SVector<Float, PHASES>, saturation: (Float, Float
     let range = (voltages.min(), voltages.max());
     if range.0 < saturation.0 || range.1 > saturation.1 {
         let center = (range.1 + range.0) * 0.5;
-        voltages.iter()
+        SVector::from_iterator(voltages.iter()
             .map(|voltage|  (voltage - center).clamp(saturation.0, saturation.1))
-            .collect::<_>()
+            )
     }
     else {voltages}
 }
@@ -179,23 +181,23 @@ impl TorqueControl {
         // motor characteristics gives relation between torque and current
         let target_current = target_torque / self.motor.rated_torque * self.motor.rated_current;
         // optimal field for desired torque (no need to waste energy on parallel direction)
-        let target_field = Vector2::new(0, target_current);
+        let target_field = Vector2::new(0., target_current);
         
         // considering one phase alone:  u = R i + L di/dt
         // use resistance for feed forward
-        let mut target_voltage: Vector2<Float> = target_field * Vector2::repeat(self.motor.phase_resistance);
+        let mut target_voltage: Vector2<Float> = target_field.component_mul(&Vector2::repeat(self.motor.phase_resistance));
         // use indicutance for correction
         let error = target_field - current_field;
         self.integral += error * self.period;
         // proportional correction
-        target_voltage += error * Vector2::repeat(self.gains.proportional * self.motor.phase_inductance);
+        target_voltage += error.component_mul(&Vector2::repeat(self.gains.proportional * self.motor.phase_inductance));
         if target_voltage.norm() > max_voltage {
             target_voltage *= Vector2::repeat(max_voltage / target_voltage.norm());
         }
         // integral correction
         target_voltage += self.integral * Vector2::repeat(self.gains.integral * self.motor.phase_inductance);
         if target_voltage.norm() > max_voltage {
-            let clamped = target_voltage * Vector2::repeat(max_voltage / target_voltage.norm());
+            let clamped = target_voltage.component_mul(&Vector2::repeat(max_voltage / target_voltage.norm()));
             self.integral += (clamped - target_voltage) / (self.gains.integral * self.motor.phase_inductance);
             target_voltage = clamped;
         }
