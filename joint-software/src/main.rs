@@ -18,6 +18,7 @@ use esp_hal::{
 use esp_println::{println, dbg};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+use futures_concurrency::future::Join;
 
 mod utils;
 pub mod i2c;
@@ -36,11 +37,12 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 // #[main]
 #[esp_hal_embassy::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {  
     esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    esp_alloc::heap_allocator!(size: 32 * 1024);
     
     let bus = RefCell::new(
         I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default()
@@ -78,10 +80,17 @@ async fn main(spawner: Spawner) {
         period,
         motor,
         gains,
-        );
+        ).unwrap();
+    
+    println!("{}", esp_alloc::HEAP.stats());
 
+    foc.calibrate(motor.rated_torque * 0.5, 1.).await.unwrap();
+    Timer::after(Duration::from_secs(5)).await;
     loop {
-        Timer::after(Duration::from_secs(5)).await;
+        (
+            foc.step(motor.rated_torque * 0.1),
+            Timer::after(Duration::from_micros((period * 1e6) as _)),
+        ).join().await;
     }
 }
 

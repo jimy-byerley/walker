@@ -1,20 +1,22 @@
 
-use core::cell::RefCell;
+use core::{
+    cell::RefCell,
+    future::Future,
+    };
 use esp_hal::{
     gpio::{*, interconnect::PeripheralOutput},
     analog::adc::*,
     mcpwm::{*, operator::*},
     Blocking,
     time::Rate,
-};
+    };
 use embedded_hal_async::i2c::I2c;
-use nalgebra::{Matrix, SMatrix, SVector, Vector2, Matrix2, Rotation2};
 use num_traits::float::Float as FloatTrait;
 
 use crate::{
-    as5600::{self, As5600},
-    nb_task,
+    as5600::As5600,
     foc::Driver,
+    nb_task,
     };
 
 type Float = f32;
@@ -99,18 +101,20 @@ where
     ADC1: AdcChannel + AnalogPin,
     PWM: PwmPeripheral + 'd,
 {
-    async fn get_position(&mut self) -> Float {
-        self.position_sensor.angle().await.unwrap()
+    fn get_position(&mut self) -> impl Future<Output=Float> {
+        async {self.position_sensor.angle().await.unwrap()}
     }
-    async fn get_currents(&mut self) -> SVector<Float, PHASES> {
-        let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
-        let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
-        let max_adc_voltage = 1.1; // adc max on esp32 with 0db attenuation
-        let i0 = Float::from(i0) / Float::from(i16::MAX) * max_adc_voltage;
-        let i1 = Float::from(i1) / Float::from(i16::MAX) * max_adc_voltage;
-        [i0, i1, -i0-i1].into()
+    fn get_currents(&mut self) -> impl Future<Output=[Float; PHASES]> {
+        async {
+            let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
+            let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
+            let max_adc_voltage = 1.1; // adc max on esp32 with 0db attenuation
+            let i0 = Float::from(i0) / Float::from(i16::MAX) * max_adc_voltage;
+            let i1 = Float::from(i1) / Float::from(i16::MAX) * max_adc_voltage;
+            [i0, i1, -i0-i1]
+        }
     }
-    fn set_modulations(&mut self, modulations: SVector<Float, PHASES>) {
+    fn set_modulations(&mut self, modulations: [Float; PHASES]) {
         self.power_enable.set_high();
         self.power_pins.0.set_timestamp((modulations[0] * Float::from(self.power_pins.0.period())).round() as _);
         self.power_pins.1.set_timestamp((modulations[1] * Float::from(self.power_pins.1.period())).round() as _);

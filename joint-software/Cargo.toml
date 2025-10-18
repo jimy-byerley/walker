@@ -13,17 +13,17 @@ log = "0.4"
 embedded-hal-async = "1.0"
 nb = "1.1"
 bilge = "0.3"
-packbytes = {version="0.2", default-features=false}
-nalgebra = {version="0.34", features = ['libm'], default-features=false}
-num-traits = {version="0.2.19", features = ['libm'], default-features=false}
-
+packbytes = { version="0.2", default-features=false }
+vecmat = { version="0.7", default-features=false }
+num-traits = { version="0.2", features = ['libm'], default-features=false }
+futures-concurrency = { version = "7.6", default-features=false }
 
 esp-bootloader-esp-idf = { version = "0.2.0", features = ["esp32"] }
 esp-hal                = { version = "=1.0.0-rc.0", features = ["esp32", "log-04", "unstable"] }
 esp-backtrace          = { version = "0.17", features = ["esp32", "println", "colors", "panic-handler", "exception-handler"]}
 esp-hal-embassy        = { version = "0.9", features = ["esp32", "executors", "log-04"] }
 esp-println            = { version = "0.15", features = ["esp32", "log-04"] }
-esp-alloc = "0.8"
+esp-alloc              = { version = "0.9", features = ["esp32"] }
 critical-section = "1.2"
 embassy-executor = "0.7"
 embassy-time = "0.5.0"
