@@ -51,9 +51,12 @@ pub struct MotorProfile {
     /// number of pairs of poles in the motor
     pub poles: u8,
 }
+/// gains for torque control
 #[derive(Copy, Clone, Debug, Default)]
 pub struct CorrectorGains {
+    /// Hz
     pub proportional: Float,
+    /// Hz
     pub integral: Float,
 }
 
@@ -115,7 +118,7 @@ impl<'d, D:Driver> Foc<'d, D> {
         let end = Instant::now() + Duration::from_millis((duration * 1e3) as _);
         // reset field orientation
         let expected = 0.;
-        self.transform.set_position(expected - Float::PI()/2.);
+        self.transform.set_position(expected * self.position_to_phase - Float::PI()/2.);
         loop {
             println!("measure");
             let current_currents = self.driver.get_currents().await.into();
@@ -200,6 +203,7 @@ pub struct TorqueControl {
     integral: Vector<Float, 2>,
 }
 impl TorqueControl {
+    /// gains must be continuous time, period will be used to convert them to discrete gains
     pub fn new(period: Float, motor: MotorProfile, gains: CorrectorGains) -> Result<Self, &'static str> {
         Ok(Self {
             motor,

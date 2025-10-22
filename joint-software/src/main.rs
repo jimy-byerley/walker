@@ -12,6 +12,8 @@ use esp_hal::{
     clock::CpuClock,
     i2c::master::I2c,
     time::Rate,
+    timer::timg::TimerGroup,
+//     interrupt::software::SoftwareInterruptControl,
 };
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
@@ -33,27 +35,19 @@ use crate::{
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-// #[main]
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) {  
     esp_println::logger::init_logger_from_env();
-
     esp_alloc::heap_allocator!(size: 32 * 1024);
     
-    use esp_hal::timer::timg::TimerGroup;
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
-    
-//     let timg0 = TimerGroup::new(peripherals.TIMG0);
-//     esp_hal_embassy::init(timg0.timer0);
-    
+
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-
-    use esp_hal::interrupt::software::SoftwareInterruptControl;
-    let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-
     esp_rtos::start(timg0.timer0);
+    
 //     // Optionally, start the scheduler on the second core
+//     let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
 //     esp_rtos::start_second_core(
 //         software_interrupt.software_interrupt0,
 //         software_interrupt.software_interrupt1,
@@ -68,19 +62,19 @@ async fn main(_spawner: Spawner) {
             .with_scl(peripherals.GPIO18)
             .into_async()
     );
-    let power_voltage = 10.; // volts
+    let power_voltage = 15.; // volts
     let position_offset = 0.; // rad
-    let period = 0.001; // second
+    let period = 0.5e3; // second
     let gains = CorrectorGains {
         proportional: 10., // Hz
         integral: 5., // Hz
     };
     let motor = MotorProfile {
+        poles: 2,
         phase_resistance: 12., // ohm
         phase_inductance: 0., // henry
         rated_torque: 82e-3, // N.m
         rated_current: 0.91, // amps
-        poles: 2,
     };
     let mut driver = MKSDualFoc::new(
         &bus,
@@ -102,7 +96,6 @@ async fn main(_spawner: Spawner) {
     println!("{}", esp_alloc::HEAP.stats());
 
     foc.calibrate(motor.rated_torque * 0.8, 1.).await.unwrap();
-    Timer::after(Duration::from_secs(1)).await;
     loop {
         let (state, _) = (
             foc.step(motor.rated_torque * 0.4),
