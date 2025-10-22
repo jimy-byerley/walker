@@ -3,6 +3,7 @@ use bilge::prelude::*;
 use embedded_hal_async::i2c::I2c;
 use crate::i2c::{Slave, Register};
 use crate::pack_bilge;
+use esp_println::{println, dbg};
 
 
 /// high level control interface to the AS5600 magnetic encoder sensor
@@ -21,12 +22,13 @@ impl<'b, I2C:I2c> As5600<'b, I2C>
     pub async fn check(&mut self) -> Result<(), Error<I2C::Error>> {
         let status = self.slave.read(registers::STATUS).await .map_err(|e| Error::I2c(e))?;
         if !status.magnet_detected() {Err(Error::Sensor("magnet not detected"))}
-        else if status.magnet_too_high() {Err(Error::Sensor("maximum too strong"))}
+        else if status.magnet_too_high() {Err(Error::Sensor("maget too strong"))}
         else if status.magnet_too_low() {Err(Error::Sensor("magnet too weak"))}
         else {Ok(())}
     }
 }
 /// high level errors in managing the sensor
+#[derive(Copy, Clone, Debug)]
 pub enum Error<E> {
     I2c(E),
     Sensor(&'static str),

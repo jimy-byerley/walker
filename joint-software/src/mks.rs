@@ -6,12 +6,13 @@ use core::{
 use esp_hal::{
     gpio::{*, interconnect::PeripheralOutput},
     analog::adc::*,
-    mcpwm::{*, operator::*},
+    mcpwm::{*, operator::*, timer::PwmWorkingMode},
     Blocking,
     time::Rate,
     };
 use embedded_hal_async::i2c::I2c;
 use num_traits::float::Float as FloatTrait;
+use num_traits::FloatConst;
 
 use crate::{
     as5600::As5600,
@@ -64,7 +65,8 @@ where
     {
         let power_enable = Output::new(power_enable, Level::Low, OutputConfig::default());
         
-        let mut mcpwm = McPwm::new(power_pwm, PeripheralClockConfig::with_frequency(Rate::from_mhz(40)).unwrap());
+        let config = PeripheralClockConfig::with_frequency(Rate::from_mhz(40)).unwrap();
+        let mut mcpwm = McPwm::new(power_pwm, config);
         mcpwm.operator0.set_timer(&mcpwm.timer0);
         mcpwm.operator1.set_timer(&mcpwm.timer0);
         mcpwm.operator2.set_timer(&mcpwm.timer0);
@@ -73,11 +75,14 @@ where
             mcpwm.operator1.with_pin_a(power_pins.1, PwmPinConfig::UP_DOWN_ACTIVE_HIGH),
             mcpwm.operator2.with_pin_a(power_pins.2, PwmPinConfig::UP_DOWN_ACTIVE_HIGH),
             );
+        let timer_clock_cfg = config
+            .timer_clock_with_frequency(99, PwmWorkingMode::UpDown, Rate::from_khz(20)).unwrap(); 
+        mcpwm.timer0.start(timer_clock_cfg);
         
         let mut config = AdcConfig::new();
         let current_pins = (
-            config.enable_pin(current_pins.0, Attenuation::_0dB),
-            config.enable_pin(current_pins.1, Attenuation::_0dB),
+            config.enable_pin(current_pins.0, Attenuation::_11dB),
+            config.enable_pin(current_pins.1, Attenuation::_11dB),
             );
         let adc = Adc::new(current_adc, config);
      
@@ -92,6 +97,8 @@ where
             }
     }
 }
+use esp_println::{println, dbg};
+
 impl<'d, I2C, ADC, ADC1, ADC0, PWM> 
 Driver for MKSDualFoc<'d, I2C, ADC, ADC1, ADC0, PWM> 
 where
@@ -102,15 +109,22 @@ where
     PWM: PwmPeripheral + 'd,
 {
     fn get_position(&mut self) -> impl Future<Output=Float> {
-        async {self.position_sensor.angle().await.unwrap()}
+        async {
+//             self.position_sensor.check().await.map_err(|e|  dbg!(e)).ok();
+            self.position_sensor.angle().await.unwrap()
+        }
     }
     fn get_currents(&mut self) -> impl Future<Output=[Float; PHASES]> {
         async {
             let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
             let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
-            let max_adc_voltage = 1.1; // adc max on esp32 with 0db attenuation
-            let i0 = Float::from(i0) / Float::from(i16::MAX) * max_adc_voltage;
-            let i1 = Float::from(i1) / Float::from(i16::MAX) * max_adc_voltage;
+//             dbg!(i0, i1);
+            let max_adc_value = (1<<12) -1;
+            let max_adc_voltage = 2.45; // adc max on esp32 with 0db attenuation
+            let amplifier = 50.; // INA181A2 gain
+            let resistor = 0.01; // sense resistor ohm
+            let i0 = Float::from(max_adc_value - i0) / Float::from(max_adc_value) * max_adc_voltage / (amplifier * resistor);
+            let i1 = Float::from(max_adc_value - i1) / Float::from(max_adc_value) * max_adc_voltage / (amplifier * resistor);
             [i0, i1, -i0-i1]
         }
     }

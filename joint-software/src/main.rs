@@ -6,8 +6,6 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use esp_backtrace as _;
-
 use core::cell::RefCell;
 use esp_backtrace as _;
 use esp_hal::{
@@ -15,10 +13,10 @@ use esp_hal::{
     i2c::master::I2c,
     time::Rate,
 };
-use esp_println::{println, dbg};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use futures_concurrency::future::Join;
+use esp_println::{println, dbg};
 
 mod utils;
 pub mod i2c;
@@ -36,13 +34,31 @@ use crate::{
 esp_bootloader_esp_idf::esp_app_desc!();
 
 // #[main]
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(_spawner: Spawner) {  
     esp_println::logger::init_logger_from_env();
 
+    esp_alloc::heap_allocator!(size: 32 * 1024);
+    
+    use esp_hal::timer::timg::TimerGroup;
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
-    esp_alloc::heap_allocator!(size: 32 * 1024);
+    
+//     let timg0 = TimerGroup::new(peripherals.TIMG0);
+//     esp_hal_embassy::init(timg0.timer0);
+    
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+
+    use esp_hal::interrupt::software::SoftwareInterruptControl;
+    let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+
+    esp_rtos::start(timg0.timer0);
+//     // Optionally, start the scheduler on the second core
+//     esp_rtos::start_second_core(
+//         software_interrupt.software_interrupt0,
+//         software_interrupt.software_interrupt1,
+//         || {}, // Second core's main function.
+//     );
     
     let bus = RefCell::new(
         I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default()
@@ -54,7 +70,7 @@ async fn main(_spawner: Spawner) {
     );
     let power_voltage = 10.; // volts
     let position_offset = 0.; // rad
-    let period = 0.01; // second
+    let period = 0.001; // second
     let gains = CorrectorGains {
         proportional: 10., // Hz
         integral: 5., // Hz
@@ -64,12 +80,13 @@ async fn main(_spawner: Spawner) {
         phase_inductance: 0., // henry
         rated_torque: 82e-3, // N.m
         rated_current: 0.91, // amps
+        poles: 2,
     };
     let mut driver = MKSDualFoc::new(
         &bus,
         peripherals.GPIO22,
         peripherals.MCPWM0,
-        (peripherals.GPIO32, peripherals.GPIO33, peripherals.GPIO25),
+        (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
         peripherals.ADC1,
         (peripherals.GPIO0, peripherals.GPIO2),
         );
@@ -84,13 +101,15 @@ async fn main(_spawner: Spawner) {
     
     println!("{}", esp_alloc::HEAP.stats());
 
-    foc.calibrate(motor.rated_torque * 0.5, 1.).await.unwrap();
-    Timer::after(Duration::from_secs(5)).await;
+    foc.calibrate(motor.rated_torque * 0.8, 1.).await.unwrap();
+    Timer::after(Duration::from_secs(1)).await;
     loop {
-        (
-            foc.step(motor.rated_torque * 0.1),
+        let (state, _) = (
+            foc.step(motor.rated_torque * 0.4),
             Timer::after(Duration::from_micros((period * 1e6) as _)),
         ).join().await;
+    
+//         dbg!(state);
     }
 }
 

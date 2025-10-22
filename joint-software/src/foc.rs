@@ -8,6 +8,7 @@ use vecmat::{
     transform::Rotation2,
     };
 use embassy_time::{Duration, Instant, Timer};
+use esp_println::{println, dbg};
 
 type Float = f32;
 const PHASES: usize = 3;
@@ -15,26 +16,42 @@ const PHASES: usize = 3;
 
 /// trait for objects allowing to control sensors and power modulation for Field Oriented Control
 pub trait Driver {
+    /// measure the current rotor position (number of turns)
     fn get_position(&mut self) -> impl Future<Output=Float>;
+    /// measure the current value of current in motor phases (amps)
     fn get_currents(&mut self) -> impl Future<Output=[Float; PHASES]>;
+    /// set the desired power modulation for each phase (fraction) and enable if previoously disabled
     fn set_modulations(&mut self, modulations: [Float; PHASES]);
+    /// disable the motor power supply, but not sensors
     fn disable(&mut self);
 }
-#[derive(Copy, Clone, Debug)]
+/// Field Oriented Control loop state
+#[derive(Copy, Clone, Debug, Default)]
 pub struct State {
+    /// position of the rotor (number of turns, can reset on a multiple of unit)
     pub position: Float,
+    /// force the motor is applying (against load and friction)
     pub force: Float,
+    /// current motor phases voltages (volts)
     pub voltages: [Float; PHASES],
+    /// current in the motor phases (amps)
     pub currents: [Float; PHASES],
 }
+/// motor characteristics
 #[derive(Copy, Clone, Debug)]
 pub struct MotorProfile {
+    /// motor rated torque in desired unit
     pub rated_torque: Float,
+    /// (amps) motor rated current (current at rated torque)
     pub rated_current: Float,
-    pub phase_inductance: Float,
+    /// (ohm) electric resistance of one motor coil, needs to be precise to ±20% at least
     pub phase_resistance: Float,
+    /// (henry) electric self inductance of one motor coil, set to 0 to disable current feedback loop
+    pub phase_inductance: Float,
+    /// number of pairs of poles in the motor
+    pub poles: u8,
 }
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct CorrectorGains {
     pub proportional: Float,
     pub integral: Float,
@@ -42,11 +59,18 @@ pub struct CorrectorGains {
 
 /// Field Oriented Control of torque
 pub struct Foc<'d, D> {
+    /// assumed voltage of the power supply
     power_voltage: Float,
+    /// rotor position offset
     position_offset: Float,
+    /// drivers for actual hardware
     driver: &'d mut D,
+    /// torque control loop
     control: TorqueControl,
+    /// space conversions
     transform: SpaceVectorTransform<PHASES>,
+    /// convert from position unit (motor rotation count) to phase angle (argument of sine waves to send)
+    position_to_phase: Float,
 }
 impl<'d, D:Driver> Foc<'d, D> {
     pub fn new(
@@ -61,6 +85,7 @@ impl<'d, D:Driver> Foc<'d, D> {
             driver,
             power_voltage,
             position_offset,
+            position_to_phase: 2.*Float::PI() * Float::from(motor.poles),
             control: TorqueControl::new(period, motor, gains)?,
             transform: SpaceVectorTransform::new(),
             })
@@ -70,9 +95,9 @@ impl<'d, D:Driver> Foc<'d, D> {
         self.control.disable();
     }
     pub async fn step(&mut self, target_torque: Float) -> State {
-        let current_position = self.driver.get_position().await.into();
+        let current_position = self.driver.get_position().await;
         let current_currents = self.driver.get_currents().await.into();
-        self.transform.set_position(current_position + self.position_offset);
+        self.transform.set_position((current_position + self.position_offset) * self.position_to_phase);
         let current_field = self.transform.phases_to_rotor(current_currents);
         let (current_torque, target_voltage) = self.control.step(current_field, target_torque, self.power_voltage);
         let target_voltages = self.transform.rotor_to_phases(target_voltage);
@@ -86,28 +111,32 @@ impl<'d, D:Driver> Foc<'d, D> {
             }
     }
     pub async fn calibrate(&mut self, torque: Float, duration: Float) -> Result<(), &'static str> {
+        println!("calibrate");
+        let end = Instant::now() + Duration::from_millis((duration * 1e3) as _);
         // reset field orientation
         let expected = 0.;
-        let end = Instant::now() + Duration::from_millis((duration * 1e3) as _);
-        self.transform.set_position(expected);
+        self.transform.set_position(expected - Float::PI()/2.);
         loop {
+            println!("measure");
             let current_currents = self.driver.get_currents().await.into();
             let current_field = self.transform.phases_to_rotor(current_currents);
             let (current_torque, target_voltage) = self.control.step(current_field, torque, self.power_voltage);
             let target_voltages = self.transform.rotor_to_phases(target_voltage);
             let target_modulations = clamp_voltage(target_voltages / self.power_voltage + Vector::fill(0.5), (0., 1.));
             self.driver.set_modulations(target_modulations.into());
+            dbg!(current_currents, current_field, target_voltage, target_modulations);
             // wait for position to stabilize
-            if (current_torque - torque).abs() / torque < 0.2 {
-                return Err("current control failed");
-            }
             if Instant::now() > end {
+//                 if (current_torque - torque).abs() / torque < 0.2 {
+//                     return Err("current control failed");
+//                 }
                 break;
             }
             Timer::after(Duration::from_micros((self.control.period() * 1e6) as _)).await;
         }
         // current position is offset
         self.position_offset = expected - self.driver.get_position().await;
+        dbg!(self.position_offset);
         self.disable();
         Ok(())
     }
@@ -125,7 +154,7 @@ impl<const N: usize> SpaceVectorTransform<N> {
     pub fn new() -> Self {
         let mut phases = Matrix::<Float, 2, N>::zero();
         for i in 0 .. N {
-            let angle = Float::PI() * (i as Float) / (N as Float);
+            let angle = 2. * Float::PI() * (i as Float) / (N as Float);
             phases[(0,i)] = angle.cos();
             phases[(1,i)] = angle.sin();
         }
@@ -135,6 +164,7 @@ impl<const N: usize> SpaceVectorTransform<N> {
             stator_to_phases: phases.transpose().dot(phases.dot(phases.transpose()).inv()),
         }
     }
+    /// update current rotor to stator transform
     pub fn set_position(&mut self, position: Float) {
         self.rotor_to_stator = Matrix::from(Rotation2::new(position).to_linear().into_matrix());
     }
@@ -160,9 +190,13 @@ pub fn clamp_voltage(voltages: Vector<Float, PHASES>, saturation: (Float, Float)
 
 
 pub struct TorqueControl {
+    /// motor electrical characteristics
     motor: MotorProfile,
+    /// expected control period, step should be called at this rate
     period: Float,
+    /// correctior gains
     gains: CorrectorGains,
+    /// current integral value
     integral: Vector<Float, 2>,
 }
 impl TorqueControl {
@@ -180,7 +214,7 @@ impl TorqueControl {
     fn continuous_to_discrete_gain(period: Float, proportional: Float) -> Result<Float, &'static str> {
         let gain = (1. - (-proportional * period).exp()) / period;
         // we consider any phenomenon faster than this control loop to be out of control
-        if gain > 1. 
+        if gain * period > 1.
             {return Err("gain is higher than control loop frequency")}
         // zero order hold coefficient for getting the same result as a continuous correction on a 1st order system
         Ok(gain)
@@ -188,7 +222,7 @@ impl TorqueControl {
     pub fn period(&self) -> Float {
         self.period
     }
-    
+    /// inform the control loop that the motor is disabled until `step` is called again
     pub fn disable(&mut self) {
         self.integral = Vector::zero();
     }
