@@ -1,32 +1,34 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-};
+use core::cell::RefCell;
 use bilge::prelude::*;
+use embedded_hal_async::i2c::I2c;
 use crate::i2c::{Slave, Register};
+use crate::pack_bilge;
+use esp_println::{println, dbg};
 
 
 /// high level control interface to the AS5600 magnetic encoder sensor
-pub struct AS5600<I2C: embedded_hal::i2c::I2c> {
-    pub slave: Slave<I2C>,
+pub struct As5600<'b, I2C> {
+    pub slave: Slave<'b, I2C>,
 }
-impl<I2C:embedded_hal::i2c::I2c> AS5600<I2C>
+impl<'b, I2C:I2c> As5600<'b, I2C>
 {
-    pub fn new(bus: Rc<RefCell<I2C>>) -> Self {
+    pub fn new(bus: &'b RefCell<I2C>) -> Self {
         Self{slave: Slave::new(bus, ADDRESS)}
     }
-    pub fn angle(&mut self) -> Result<f32, I2C::Error> {
-        Ok(f32::from(u16::from(self.slave.read(registers::ANGLE)?)))
+    pub async fn angle(&mut self) -> Result<f32, I2C::Error> {
+        let angle = self.slave.read(registers::ANGLE).await?.value();
+        Ok(f32::from(u16::from(angle)) / f32::from(1u16<<12))
     }
-    pub fn check(&mut self) -> Result<(), Error<I2C::Error>> {
-        let status = self.slave.read(registers::STATUS) .map_err(|e| Error::I2c(e))?;
+    pub async fn check(&mut self) -> Result<(), Error<I2C::Error>> {
+        let status = self.slave.read(registers::STATUS).await .map_err(|e| Error::I2c(e))?;
         if !status.magnet_detected() {Err(Error::Sensor("magnet not detected"))}
-        else if status.magnet_too_high() {Err(Error::Sensor("maximum too strong"))}
+        else if status.magnet_too_high() {Err(Error::Sensor("maget too strong"))}
         else if status.magnet_too_low() {Err(Error::Sensor("magnet too weak"))}
         else {Ok(())}
     }
 }
 /// high level errors in managing the sensor
+#[derive(Copy, Clone, Debug)]
 pub enum Error<E> {
     I2c(E),
     Sensor(&'static str),
@@ -49,9 +51,9 @@ pub mod registers {
         360°(full-turn) → 4096dec; 0° to180°→2048dec). To configure
         the angular range, see Angle Programming.
      */
-    pub const ZPOS: Register<u12> = Register::new(0x1);
-    pub const MPOS: Register<u12> = Register::new(0x3);
-    pub const MANG: Register<u12> = Register::new(0x5);
+    pub const ZPOS: Register<Angle> = Register::new(0x1);
+    pub const MPOS: Register<Angle> = Register::new(0x3);
+    pub const MANG: Register<Angle> = Register::new(0x5);
     /**
         The CONF register supports customizing the AS5600.
      */
@@ -64,8 +66,8 @@ pub mod registers {
         of the 360 degree range to avoid discontinuity points or
         toggling of the output within one rotation.
      */
-    pub const RAW_ANGLE: Register<u12> = Register::new(0x0c);
-    pub const ANGLE: Register<u12> = Register::new(0x0e);
+    pub const RAW_ANGLE: Register<Angle> = Register::new(0x0c);
+    pub const ANGLE: Register<Angle> = Register::new(0x0e);
 
     /// The STATUS register provides bits that indicate the current state of the AS5600.
     pub const STATUS: Register<Status> = Register::new(0x0b);
@@ -82,7 +84,7 @@ pub mod registers {
      */
     pub const AGC: Register<u8> = Register::new(0x0f);
     /// The MAGNITUDE register indicates the magnitude value of the internal CORDIC.
-    pub const MAGNITUDE: Register<u12> = Register::new(0x01a);
+    pub const MAGNITUDE: Register<Angle> = Register::new(0x01a);
 
     /**
         Non-Volatile Memory (OTP)
@@ -98,6 +100,14 @@ pub mod registers {
         commands are used to permanently program the device:
      */
     pub const BURN: Register<Burn> = Register::new(0x0ff);
+    
+    #[bitsize(16)]
+    #[derive(FromBits, DebugBits, PartialEq, Default)]
+    pub struct Angle {
+        pub value: u12,
+        _padding1: u4,
+    }
+    pack_bilge!(Angle);
 
     #[bitsize(16)]
     #[derive(FromBits, DebugBits, PartialEq, Default)]
@@ -120,6 +130,8 @@ pub mod registers {
         pub watchdog: bool,
         _padding1: u2,
     }
+    pack_bilge!(Conf);
+    
     #[bitsize(2)]
     #[derive(FromBits, Debug, PartialEq, Default)]
     pub enum PowerMode {
@@ -129,6 +141,7 @@ pub mod registers {
         LowPower2 = 0b10,
         LowPower3 = 0b11,
     }
+    
     #[bitsize(2)]
     #[derive(FromBits, Debug, PartialEq, Default)]
     pub enum OutputStage {
@@ -141,6 +154,7 @@ pub mod registers {
         Pwm = 0b10,
         Undefined = 0b11,
     }
+    
     #[bitsize(2)]
     #[derive(FromBits, Debug, PartialEq, Default)]
     pub enum PwmFrequency {
@@ -185,6 +199,7 @@ pub mod registers {
         pub magnet_detected: bool,
         _padding: u2,
     }
+    pack_bilge!(Status);
 
     #[bitsize(8)]
     #[derive(FromBits, Debug, PartialEq, Default)]
@@ -217,4 +232,5 @@ pub mod registers {
          */
         Setting = 0x40,
     }
+//     pack_bilge!(Burn);
 }

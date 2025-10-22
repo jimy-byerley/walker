@@ -1,121 +1,108 @@
+#![no_std]
+#![no_main]
+#![deny(
+    clippy::mem_forget,
+    reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
+    holding buffers for the duration of a data transfer."
+)]
 
+use core::cell::RefCell;
+use esp_backtrace as _;
+use esp_hal::{
+    clock::CpuClock,
+    i2c::master::I2c,
+    time::Rate,
+    timer::timg::TimerGroup,
+//     interrupt::software::SoftwareInterruptControl,
+};
+use embassy_executor::Spawner;
+use embassy_time::{Duration, Timer};
+use futures_concurrency::future::Join;
+use esp_println::{println, dbg};
+
+mod utils;
 pub mod i2c;
 pub mod as5600;
-pub mod tcs3472;
-// pub mod synchron_motor;
+// pub mod tcs3472;
+pub mod foc;
+pub mod mks;
+
+use crate::{
+    foc::{Foc, CorrectorGains, MotorProfile},
+    mks::MKSDualFoc,
+    };
 
 
-use std::{
-    rc::Rc,
-    cell::RefCell,
-};
-use esp_idf_hal::{
-    i2c::{I2cConfig, I2cDriver},
-    ledc::{LedcTimerDriver, LedcDriver, config::TimerConfig},
-    peripherals::Peripherals,
-    delay::Delay,
-    prelude::*,
-    ledc::{LedcDriver, LedcTimerDriver, config::TimerConfig},
-};
+esp_bootloader_esp_idf::esp_app_desc!();
 
+#[esp_rtos::main]
+async fn main(_spawner: Spawner) {  
+    esp_println::logger::init_logger_from_env();
+    esp_alloc::heap_allocator!(size: 32 * 1024);
+    
+    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
+    let peripherals = esp_hal::init(config);
 
-fn main() {
-    esp_idf_hal::sys::link_patches();
-//     esp_idf_hal::log::EspLogger::initialize_default();
-
-    println!("1");
-    let peripherals = Peripherals::take().unwrap();
-
-
-    let m0_in1 = peripherals.pins.gpio6;
-    let timer_driver = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::default().frequency(25.kHz().into())).unwrap();
-    let mut driver = LedcDriver::new(peripherals.ledc.channel0, timer_driver, m0_in1).unwrap();
-
-    let max_duty = driver.get_max_duty();
-    log::info!("max duty {}", max_duty);
-    driver.set_duty(max_duty * 3 / 4).unwrap();
-
-
-
-    let sda = peripherals.pins.gpio19;
-    let scl = peripherals.pins.gpio18;
-
-    let m0i0 = peripherals.pins.gpio32;
-    let m0i1 = peripherals.pins.gpio33;
-    let m0i2 = peripherals.pins.gpio25;
-
-    println!("2");
-    let timer = LedcTimerDriver::new(peripherals.ledc.timer0, &TimerConfig::default().frequency(25.kHz().into())).expect("creating timer driver");
-    println!("2.5");
-    let mut pwm0 = LedcDriver::new(peripherals.ledc.channel0, &timer, m0i0).expect("creating ledc driver");
-    println!("2.5.1");
-    let mut pwm1 = LedcDriver::new(peripherals.ledc.channel1, &timer, m0i1).unwrap();
-    println!("2.5.2");
-    let mut pwm2 = LedcDriver::new(peripherals.ledc.channel2, &timer, m0i2).unwrap();
-
-    println!("3");
-    pwm0.set_duty(pwm0.get_max_duty() * 1 / 4).unwrap();
-    pwm1.set_duty(pwm1.get_max_duty() * 2 / 4).unwrap();
-    pwm2.set_duty(pwm2.get_max_duty() * 3 / 4).unwrap();
-
-    println!("4");
-    let delay = Delay::default();
-    let bus = Rc::new(RefCell::new(
-        I2cDriver::new(peripherals.i2c0, sda, scl, &I2cConfig::new().baudrate(KiloHertz(400).into())).unwrap()
-    ));
-
-    let mut slave = crate::i2c::Slave::new(bus.clone(), as5600::ADDRESS);
-
-    use bilge::prelude::u12;
-    slave.write(as5600::registers::ZPOS, u12::from_u16(0)).unwrap();
-    slave.write(as5600::registers::MPOS, u12::from_u16(0b111111111111)).unwrap();
-
-    loop {
-        // log::info!("angle: {:.3e}", rotor.angle().unwrap());
-        log::info!("read {} {} {:#?} {:#?} {} {}",
-            slave.read(as5600::registers::RAW_ANGLE).unwrap(),
-            slave.read(as5600::registers::ANGLE).unwrap(),
-            slave.read(as5600::registers::STATUS).unwrap(),
-            slave.read(as5600::registers::CONF).unwrap(),
-            slave.read(as5600::registers::ZPOS).unwrap(),
-            slave.read(as5600::registers::MPOS).unwrap(),
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(timg0.timer0);
+    
+//     // Optionally, start the scheduler on the second core
+//     let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+//     esp_rtos::start_second_core(
+//         software_interrupt.software_interrupt0,
+//         software_interrupt.software_interrupt1,
+//         || {}, // Second core's main function.
+//     );
+    
+    let bus = RefCell::new(
+        I2c::new(peripherals.I2C0, esp_hal::i2c::master::Config::default()
+                .with_frequency(Rate::from_khz(400))
+                ).unwrap()
+            .with_sda(peripherals.GPIO19)
+            .with_scl(peripherals.GPIO18)
+            .into_async()
+    );
+    let power_voltage = 15.; // volts
+    let position_offset = 0.; // rad
+    let period = 0.5e3; // second
+    let gains = CorrectorGains {
+        proportional: 10., // Hz
+        integral: 5., // Hz
+    };
+    let motor = MotorProfile {
+        poles: 2,
+        phase_resistance: 12., // ohm
+        phase_inductance: 0., // henry
+        rated_torque: 82e-3, // N.m
+        rated_current: 0.91, // amps
+    };
+    let mut driver = MKSDualFoc::new(
+        &bus,
+        peripherals.GPIO22,
+        peripherals.MCPWM0,
+        (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
+        peripherals.ADC1,
+        (peripherals.GPIO0, peripherals.GPIO2),
         );
-        delay.delay_ms(100);
+    let mut foc = Foc::new(
+        &mut driver,
+        power_voltage,
+        position_offset,
+        period,
+        motor,
+        gains,
+        ).unwrap();
+    
+    println!("{}", esp_alloc::HEAP.stats());
+
+    foc.calibrate(motor.rated_torque * 0.8, 1.).await.unwrap();
+    loop {
+        let (state, _) = (
+            foc.step(motor.rated_torque * 0.4),
+            Timer::after(Duration::from_micros((period * 1e6) as _)),
+        ).join().await;
+    
+//         dbg!(state);
     }
 }
 
-
-
-// use esp_idf_hal::delay::FreeRtos;
-// use esp_idf_hal::ledc::*;
-// use esp_idf_hal::peripherals::Peripherals;
-// use esp_idf_hal::units::*;
-// 
-// fn main() -> anyhow::Result<()> {
-//     esp_idf_hal::sys::link_patches();
-// 
-//     println!("Configuring output channel");
-// 
-//     let peripherals = Peripherals::take()?;
-//     let mut channel = LedcDriver::new(
-//         peripherals.ledc.channel0,
-//         LedcTimerDriver::new(
-//             peripherals.ledc.timer0,
-//             &config::TimerConfig::new().frequency(25.kHz().into()),
-//         )?,
-//         peripherals.pins.gpio32,
-//     )?;
-// 
-//     println!("Starting duty-cycle loop");
-// 
-//     let max_duty = channel.get_max_duty();
-//     for numerator in [0, 1, 2, 3, 4, 5].iter().cycle() {
-//         println!("Duty {numerator}/5");
-//         channel.set_duty(max_duty * numerator / 5)?;
-//         FreeRtos::delay_ms(2000);
-//     }
-// 
-//     loop {
-//         FreeRtos::delay_ms(1000);
-//     }
-// }
