@@ -9,14 +9,15 @@ import sensors
 
 
 
-def joint():
+def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20, nteeth=60):
 	gearbox = strainwave_dual_crown(
-			rext = 50,
-			nteeth = 60,
+			rext = rext,
+			nteeth = nteeth,
 			guided = True,
 			details = True,
 			)
-	motor = nema.motor(17, 43, 5, 20, round=True, coupling='flat')
+	dim = next(dim  for dim, spec in reversed(nema.rounds.items()) if spec.width < gearbox.hole*2)
+	motor = nema.motor(dim, motor_length, motor_dshaft, motor_lshaft, round=True, coupling='flat')
 	absolute_encoder = ( sensors.sensor_color()
 			.transform(translate(gearbox.rext*Y - 8*Z) * rotate(pi*0.6, X)) )
 	rotor_encoder = sensors.sensor_magnetic()
@@ -225,6 +226,6 @@ if __name__ == '__madcad__':
 #	settings.resolution = ('sqradm', 0.8)
 	settings.resolution = ('sqradm', 0.3)
 	
-	j = joint()
-	export(j, f"{__file__}/../out/joint-v2", (j.gearbox.rext, j.gearbox.height, round(j.motor.length)))
+	j = joint(rext=50, motor_length=73)
+#	export(j, f"{__file__}/../out/joint-v1.3", (j.gearbox.rext, j.gearbox.height, round(j.motor.length)))
 	

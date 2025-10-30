@@ -63,23 +63,24 @@ squares = {
 #	8: 20,
 #	11: 28,
 #	14: 35,
-	17: square(width=42.2, spacing=31, dscrew=3, lscrew=4, dhub=22, hhub=2),
-	23: square(width=57, spacing=47.1, dscrew=5, lscrew=4, dhub=38, hhub=1.5),
+	'nema17': square(width=42.2, spacing=31, dscrew=3, lscrew=4, dhub=22, hhub=2),
+	'nema23': square(width=57, spacing=47.1, dscrew=5, lscrew=4, dhub=38, hhub=1.5),
 #	34: 86,
 #	42: 110,
 	}
 
 rounds = {
-	17: round(width=42, spacing=29, dscrew=4, lscrew=5, dhub=17.5, hhub=2),
-	23: round(width=57, spacing=38.88, dscrew=4, lscrew=4, dhub=25, hhub=2),
+	'nema17': round(width=42, spacing=29, dscrew=4, lscrew=5, dhub=17.5, hhub=2),
+	'nema23': round(width=57, spacing=38.88, dscrew=4, lscrew=4, dhub=25, hhub=2),
 	}
 
 #@cachefunc
-def motor(dim=17, length=None, dshaft=None, lshaft=None, coupling=None, round=False):
+def motor(dim='nema17', length=None, dshaft=None, lshaft=None, coupling=None, round=False):
 	if round:
 		dim = rounds[dim]
 	else:
 		dim = squares[dim]
+	print('length', length)
 	if length is None:
 		length = stceil(dim.width*1.1)
 	if dshaft is None:
@@ -123,4 +124,4 @@ def motor(dim=17, length=None, dshaft=None, lshaft=None, coupling=None, round=Fa
 		),
 		)
 
-m = motor(23, 53.5, 8, coupling='flat', round=False)
+m = motor('nema23', 53.5, 8, coupling='flat', round=False)

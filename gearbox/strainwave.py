@@ -7,6 +7,8 @@ import scipy.optimize
 from functools import reduce, partial
 import operator
 
+from utils import export
+
 
 def grooves_profile(radius, repetitions:int=16, alignment=0.5, angle=radians(40)) -> Wire:
 	''' Coupling grooves profile 
@@ -530,8 +532,8 @@ def balls_guide_profile(rballs, rball, start, stop):
 		for t in linrange(start, stop, div=10)])
 
 
-#@cachefunc
-def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.5, ball_play = 0.2, axial_play = 0.3, rball = 3, dscrew = None, guided=True, details=False):
+@cachefunc
+def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.5, ball_play = 0.1, axial_play = 0.3, rball = 3, dscrew = None, guided=True, details=False):
 	if height is None:
 		height = stceil(0.2*rext) # special case for cage height
 		cage_height = rball*2.2
@@ -673,5 +675,4 @@ if __name__ == '__madcad__':
 		details = True,
 		)
 
-	from utils import export
-	export(gearbox, f"{__file__}/../out/gearbox-strainwave-double-v2-g", (gearbox.rext, gearbox.height, gearbox.nteeth))
+#	export(gearbox, f"{__file__}/../out/gearbox-strainwave-double-v1.3-g", (gearbox.rext, gearbox.height, gearbox.nteeth))
