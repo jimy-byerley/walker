@@ -25,12 +25,12 @@ pub mod i2c;
 pub mod as5600;
 // pub mod tcs3472;
 pub mod foc;
-pub mod mks;
+pub mod drivers;
+pub mod artcat;
+pub mod registers;
+pub mod mutex;
 
-use crate::{
-    foc::{Foc, CorrectorGains, MotorProfile},
-    mks::MKSDualFoc,
-    };
+use crate::foc::{Foc, CorrectorGains, MotorProfile};
 
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -73,16 +73,24 @@ async fn main(_spawner: Spawner) {
         poles: 2,
         phase_resistance: 12., // ohm
         phase_inductance: 0., // henry
-        rated_torque: 82e-3, // N.m
+        rated_torque: 62e-3, // N.m
         rated_current: 0.91, // amps
     };
-    let mut driver = MKSDualFoc::new(
+//     let mut driver = drivers::Mk1::new(
+//         &bus,
+//         peripherals.GPIO22,
+//         peripherals.MCPWM0,
+//         (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
+//         peripherals.ADC1,
+//         (peripherals.GPIO0, peripherals.GPIO2),
+//         );
+    let mut driver = drivers::Mk2::new(
         &bus,
         peripherals.GPIO22,
         peripherals.MCPWM0,
         (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
-        peripherals.ADC1,
-        (peripherals.GPIO0, peripherals.GPIO2),
+        motor.phase_resistance,
+        power_voltage,
         );
     let mut foc = Foc::new(
         &mut driver,

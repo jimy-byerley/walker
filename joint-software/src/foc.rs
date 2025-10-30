@@ -1,5 +1,8 @@
 // use nalgebra::{Matrix, SMatrix, SVector, Vector2, Matrix2, Rotation2};
-use core::future::Future;
+use core::{
+    future::Future,
+    ops::DerefMut,
+    };
 use num_traits::float::{Float as FloatTrait, FloatConst};
 use vecmat::{
     prelude::{Zero, Dot},
@@ -16,14 +19,18 @@ const PHASES: usize = 3;
 
 /// trait for objects allowing to control sensors and power modulation for Field Oriented Control
 pub trait Driver {
-    /// measure the current rotor position (number of turns)
-    fn get_position(&mut self) -> impl Future<Output=Float>;
-    /// measure the current value of current in motor phases (amps)
-    fn get_currents(&mut self) -> impl Future<Output=[Float; PHASES]>;
+    /// measure rotor position and phases currents, it can take up to a period
+    fn measure(&mut self) -> impl Future<Output=Measure>;
     /// set the desired power modulation for each phase (fraction) and enable if previoously disabled
-    fn set_modulations(&mut self, modulations: [Float; PHASES]);
+    fn modulate(&mut self, modulations: [Float; PHASES]);
     /// disable the motor power supply, but not sensors
     fn disable(&mut self);
+}
+pub struct Measure {
+    /// current rotor position (number of turns)
+    position: Float,
+    /// current value of current in motor phases (amps)
+    currents: [Float; PHASES],
 }
 /// Field Oriented Control loop state
 #[derive(Copy, Clone, Debug, Default)]
@@ -61,23 +68,23 @@ pub struct CorrectorGains {
 }
 
 /// Field Oriented Control of torque
-pub struct Foc<'d, D> {
+pub struct Foc<D> {
     /// assumed voltage of the power supply
     power_voltage: Float,
     /// rotor position offset
     position_offset: Float,
     /// drivers for actual hardware
-    driver: &'d mut D,
+    driver: D,
     /// torque control loop
     control: TorqueControl,
     /// space conversions
     transform: SpaceVectorTransform<PHASES>,
     /// convert from position unit (motor rotation count) to phase angle (argument of sine waves to send)
-    position_to_phase: Float,
+    position_to_angle: Float,
 }
-impl<'d, D:Driver> Foc<'d, D> {
+impl<D: DerefMut<Target=impl Driver>> Foc<D> {
     pub fn new(
-        driver: &'d mut D, 
+        driver: D, 
         power_voltage: Float, 
         position_offset: Float, 
         period: Float, 
@@ -88,7 +95,7 @@ impl<'d, D:Driver> Foc<'d, D> {
             driver,
             power_voltage,
             position_offset,
-            position_to_phase: 2.*Float::PI() * Float::from(motor.poles),
+            position_to_angle: 2.*Float::PI() * Float::from(motor.poles),
             control: TorqueControl::new(period, motor, gains)?,
             transform: SpaceVectorTransform::new(),
             })
@@ -100,7 +107,7 @@ impl<'d, D:Driver> Foc<'d, D> {
     pub async fn step(&mut self, target_torque: Float) -> State {
         let current_position = self.driver.get_position().await;
         let current_currents = self.driver.get_currents().await.into();
-        self.transform.set_position((current_position + self.position_offset) * self.position_to_phase);
+        self.transform.set_position((current_position + self.position_offset) * self.position_to_angle);
         let current_field = self.transform.phases_to_rotor(current_currents);
         let (current_torque, target_voltage) = self.control.step(current_field, target_torque, self.power_voltage);
         let target_voltages = self.transform.rotor_to_phases(target_voltage);
@@ -113,12 +120,11 @@ impl<'d, D:Driver> Foc<'d, D> {
             voltages: target_voltages.as_array().clone(),
             }
     }
-    pub async fn calibrate(&mut self, torque: Float, duration: Float) -> Result<(), &'static str> {
-        println!("calibrate");
+    pub async fn calibrate_constant(&mut self, torque: Float, duration: Float) -> Result<(), &'static str> {
         let end = Instant::now() + Duration::from_millis((duration * 1e3) as _);
         // reset field orientation
         let expected = 0.;
-        self.transform.set_position(expected * self.position_to_phase - Float::PI()/2.);
+        self.transform.set_position(expected * self.position_to_angle - Float::PI()/2.);
         loop {
             println!("measure");
             let current_currents = self.driver.get_currents().await.into();
@@ -142,6 +148,10 @@ impl<'d, D:Driver> Foc<'d, D> {
         dbg!(self.position_offset);
         self.disable();
         Ok(())
+    }
+    pub async fn calibrate_vibrations(&mut self, torque: Float, frequency: Float) -> Result<(), &'static str> {
+        let rotation = frequency / 64.;
+        let measures = RollingBuffer::new();
     }
 }
 
