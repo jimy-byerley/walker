@@ -26,9 +26,7 @@ pub mod as5600;
 // pub mod tcs3472;
 pub mod foc;
 pub mod drivers;
-pub mod artcat;
 pub mod registers;
-pub mod mutex;
 
 use crate::foc::{Foc, CorrectorGains, MotorProfile};
 
