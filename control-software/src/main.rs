@@ -28,29 +28,32 @@ async fn main() -> Result<(), uartcat::master::Error> {
         slave.write(registers::target::CONTROL, control).await?.one()?;
         loop {
             let status = slave.read(registers::current::STATUS).await?.one()?;
-            dbg!(status);
-            if status.calibrated() {break;}
             if status.fault() {
                 println!("calibration error {:?}", slave.read(registers::current::ERROR).await?.one()?);
                 panic!("failed to calibrate");
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            if status.calibrated() {break;}
+            tokio::time::sleep(Duration::from_millis(300)).await;
         }
         control.set_calibrate(false);
         slave.write(registers::target::CONTROL, control).await?.one()?;
         
         println!("apply constant force");
         let rated_force = slave.read(registers::typical::RATED_FORCE).await?.one()?;
-        slave.write(registers::target::FORCE, rated_force * 0.5).await?.one()?;
+        dbg!(rated_force);
+        slave.write(registers::target::LIMIT_POSITION, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
+        slave.write(registers::target::LIMIT_VELOCITY, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
+        slave.write(registers::target::LIMIT_FORCE, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
+        slave.write(registers::target::FORCE, rated_force * 0.8).await?.one()?;
         loop {
             dbg!(
                 slave.read(registers::current::ERROR).await?.one()?,
                 slave.read(registers::current::POSITION).await?.one()?,
                 slave.read(registers::current::FORCE).await?.one()?,
-                slave.read(registers::current::CURRENTS).await?.one()?,
-                slave.read(registers::current::VOLTAGES).await?.one()?,
+//                 slave.read(registers::current::CURRENTS).await?.one()?,
+//                 slave.read(registers::current::VOLTAGES).await?.one()?,
                 );
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
         }
     };
     let com = async {

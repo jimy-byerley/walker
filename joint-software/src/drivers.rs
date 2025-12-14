@@ -14,6 +14,7 @@ use embedded_hal_async::i2c::I2c;
 use futures_concurrency::future::Join;
 use num_traits::float::Float as FloatTrait;
 use vecmat::Vector;
+use esp_println::dbg;
 
 use crate::{
     as5600::{self, As5600},
@@ -229,9 +230,9 @@ where
             position: self.position_sensor.angle().await.map_err(|_| ControlError::PositionSensorNotDetected)?,
             currents: self.current_estimation,
             modulations: Vector::from([
-                Float::from(self.power_pins.0.timestamp()) * Float::from(self.power_pins.0.period()),
-                Float::from(self.power_pins.1.timestamp()) * Float::from(self.power_pins.1.period()),
-                Float::from(self.power_pins.2.timestamp()) * Float::from(self.power_pins.2.period()),
+                Float::from(self.power_pins.0.timestamp()) / Float::from(self.power_pins.0.period()),
+                Float::from(self.power_pins.1.timestamp()) / Float::from(self.power_pins.1.period()),
+                Float::from(self.power_pins.2.timestamp()) / Float::from(self.power_pins.2.period()),
                 ]),
             }) }
     }

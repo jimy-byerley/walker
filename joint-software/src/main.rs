@@ -18,6 +18,7 @@ use esp_hal::{
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use futures_concurrency::future::Join;
+use esp_println::dbg;
 
 mod utils;
 pub mod i2c;
@@ -142,12 +143,20 @@ async fn main(_spawner: Spawner) {
             counter += 1;
             
             let step = async {
-//                 let state = foc.measure().await;
-//                 foc.control(state, motor.rated_torque * 0.4);
+//                 let current = foc.measure().await.unwrap();
+//                 foc.control(current, motor.rated_torque * 0.8);
                 
                 if !status.fault() && counter > fault_check_period_factor {
                     counter = 0;
-                    error = foc.check().await .or(Err(registers::ControlError::None)).unwrap_err();
+//                     error = foc.check().await 
+//                         .or(Err(registers::ControlError::None))
+//                         .unwrap_err();
+                    if let Err(err) = foc.check().await {
+                        error = err;
+                    }
+                    else {
+                        error = registers::ControlError::None;
+                    }
                     status.set_fault(error != registers::ControlError::None);
                 }
                 
@@ -182,13 +191,16 @@ async fn main(_spawner: Spawner) {
                     // calibration process takes hand over everything
                     if control.calibrate() && !previous_control.calibrate() {
                         status.set_calibrated(false);
-                        if let Err(e) = foc.calibrate_constant(force, 1.).await {
+                        if let Err(e) = foc.calibrate_constant(motor.rated_torque * 0.8, 1.).await {
                             status.set_fault(true);
+                            log::debug!("failed");
                             error = e;
                         }
                         else {
                             status.set_calibrated(true);
+                            log::debug!("success");
                         }
+                        log::debug!("calibration done");
                     }
                     // normal control
                     else {

@@ -127,26 +127,27 @@ impl<D: DerefMut<Target=impl Driver>> Foc<D> {
         self.control.disable();
     }
     pub fn control(&mut self, current: State, target_torque: Float) {
-        let current_field = self.transform.phases_to_rotor(current.currents.into());
+        let current_field = self.transform.phases_to_rotor(current.currents);
         let target_voltage = self.control.control(current_field, target_torque, self.power_voltage);
         let target_voltages = self.transform.rotor_to_phases(target_voltage);
         let target_modulations = clamp_voltage(target_voltages / self.power_voltage + Vector::fill(0.5), (0., 1.));
-        self.driver.modulate(target_modulations.into());
+        self.driver.modulate(target_modulations);
     }
     pub async fn calibrate_constant(&mut self, torque: Float, duration: Float) -> Result<(), ControlError> {
         let end = Instant::now() + Duration::from_millis((duration * 1e3) as _);
         // reset field orientation
         let expected = 0.;
-        self.transform.set_position(expected * self.position_to_angle - Float::PI()/2.);
         loop {
-            println!("measure");
             let current = self.driver.measure().await?;
-            let current_field = self.transform.phases_to_rotor(current.currents.into());
+            dbg!(current);
+            self.transform.set_position(expected * self.position_to_angle - Float::PI()/2.);
+            let current_field = self.transform.phases_to_rotor(current.currents);
             let target_voltage = self.control.control(current_field, torque, self.power_voltage);
+            dbg!(torque, current_field);
             let target_voltages = self.transform.rotor_to_phases(target_voltage);
             let target_modulations = clamp_voltage(target_voltages / self.power_voltage + Vector::fill(0.5), (0., 1.));
-            self.driver.modulate(target_modulations.into());
-            dbg!(current.currents, current_field, target_voltage, target_modulations);
+//             dbg!(target_modulations);
+            self.driver.modulate(target_modulations);
             // wait for position to stabilize
             if Instant::now() > end {
 //                 if (current_torque - torque).abs() / torque < 0.2 {
@@ -158,7 +159,6 @@ impl<D: DerefMut<Target=impl Driver>> Foc<D> {
         }
         // current position is offset
         self.position_offset = expected - self.driver.measure().await?.position;
-        dbg!(self.position_offset);
         self.disable();
         Ok(())
     }
@@ -280,7 +280,7 @@ impl TorqueControl {
         }
         // integral correction
         target_voltage += self.integral * self.gains.integral * self.motor.phase_inductance;
-        if target_voltage.length() > max_voltage {
+        if target_voltage.length() > max_voltage && self.gains.integral * self.motor.phase_inductance != 0. {
             let clamped = target_voltage * max_voltage / target_voltage.length();
             self.integral += (clamped - target_voltage) / (self.gains.integral * self.motor.phase_inductance);
             target_voltage = clamped;
