@@ -13,24 +13,32 @@ use vecmat::{
 use embassy_time::{Duration, Instant, Timer};
 use esp_println::{println, dbg};
 
+pub use crate::registers::ControlError;
+
 type Float = f32;
 const PHASES: usize = 3;
 
 
 /// trait for objects allowing to control sensors and power modulation for Field Oriented Control
 pub trait Driver {
+    /// check all sensors and hardware for faults, it should not take more than a period be might be called less often
+    fn check(&mut self) -> impl Future<Output=Result<(), ControlError>>;
     /// measure rotor position and phases currents, it can take up to a period
-    fn measure(&mut self) -> impl Future<Output=Measure>;
+    fn measure(&mut self) -> impl Future<Output=Result<Measure, ControlError>>;
     /// set the desired power modulation for each phase (fraction) and enable if previoously disabled
-    fn modulate(&mut self, modulations: [Float; PHASES]);
+    fn modulate(&mut self, modulations: Vector<Float, PHASES>);
     /// disable the motor power supply, but not sensors
     fn disable(&mut self);
 }
+/// Driver loop state
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Measure {
     /// current rotor position (number of turns)
-    position: Float,
+    pub position: Float,
     /// current value of current in motor phases (amps)
-    currents: [Float; PHASES],
+    pub currents: Vector<Float, PHASES>,
+    /// last values applied by modulate
+    pub modulations: Vector<Float, PHASES>,
 }
 /// Field Oriented Control loop state
 #[derive(Copy, Clone, Debug, Default)]
@@ -40,9 +48,9 @@ pub struct State {
     /// force the motor is applying (against load and friction)
     pub force: Float,
     /// current motor phases voltages (volts)
-    pub voltages: [Float; PHASES],
+    pub voltages: Vector<Float, PHASES>,
     /// current in the motor phases (amps)
-    pub currents: [Float; PHASES],
+    pub currents: Vector<Float, PHASES>,
 }
 /// motor characteristics
 #[derive(Copy, Clone, Debug)]
@@ -100,40 +108,45 @@ impl<D: DerefMut<Target=impl Driver>> Foc<D> {
             transform: SpaceVectorTransform::new(),
             })
     }
+    pub async fn check(&mut self) -> Result<(), ControlError> {
+        self.driver.check().await
+    }
+    pub async fn measure(&mut self) -> Result<State, ControlError> {
+        let measured = self.driver.measure().await?;
+        self.transform.set_position((measured.position + self.position_offset) * self.position_to_angle);
+        let current_field = self.transform.phases_to_rotor(measured.currents.into());
+        Ok(State {
+            position: measured.position,
+            currents: measured.currents,
+            force: self.control.observe(current_field),
+            voltages: measured.modulations * self.power_voltage,
+        })
+    }
     pub fn disable(&mut self) {
         self.driver.disable();
         self.control.disable();
     }
-    pub async fn step(&mut self, target_torque: Float) -> State {
-        let current_position = self.driver.get_position().await;
-        let current_currents = self.driver.get_currents().await.into();
-        self.transform.set_position((current_position + self.position_offset) * self.position_to_angle);
-        let current_field = self.transform.phases_to_rotor(current_currents);
-        let (current_torque, target_voltage) = self.control.step(current_field, target_torque, self.power_voltage);
+    pub fn control(&mut self, current: State, target_torque: Float) {
+        let current_field = self.transform.phases_to_rotor(current.currents.into());
+        let target_voltage = self.control.control(current_field, target_torque, self.power_voltage);
         let target_voltages = self.transform.rotor_to_phases(target_voltage);
         let target_modulations = clamp_voltage(target_voltages / self.power_voltage + Vector::fill(0.5), (0., 1.));
-        self.driver.set_modulations(target_modulations.into());
-        State {
-            position: current_position,
-            currents: current_currents.as_array().clone(), 
-            force: current_torque,
-            voltages: target_voltages.as_array().clone(),
-            }
+        self.driver.modulate(target_modulations.into());
     }
-    pub async fn calibrate_constant(&mut self, torque: Float, duration: Float) -> Result<(), &'static str> {
+    pub async fn calibrate_constant(&mut self, torque: Float, duration: Float) -> Result<(), ControlError> {
         let end = Instant::now() + Duration::from_millis((duration * 1e3) as _);
         // reset field orientation
         let expected = 0.;
         self.transform.set_position(expected * self.position_to_angle - Float::PI()/2.);
         loop {
             println!("measure");
-            let current_currents = self.driver.get_currents().await.into();
-            let current_field = self.transform.phases_to_rotor(current_currents);
-            let (current_torque, target_voltage) = self.control.step(current_field, torque, self.power_voltage);
+            let current = self.driver.measure().await?;
+            let current_field = self.transform.phases_to_rotor(current.currents.into());
+            let target_voltage = self.control.control(current_field, torque, self.power_voltage);
             let target_voltages = self.transform.rotor_to_phases(target_voltage);
             let target_modulations = clamp_voltage(target_voltages / self.power_voltage + Vector::fill(0.5), (0., 1.));
-            self.driver.set_modulations(target_modulations.into());
-            dbg!(current_currents, current_field, target_voltage, target_modulations);
+            self.driver.modulate(target_modulations.into());
+            dbg!(current.currents, current_field, target_voltage, target_modulations);
             // wait for position to stabilize
             if Instant::now() > end {
 //                 if (current_torque - torque).abs() / torque < 0.2 {
@@ -144,14 +157,15 @@ impl<D: DerefMut<Target=impl Driver>> Foc<D> {
             Timer::after(Duration::from_micros((self.control.period() * 1e6) as _)).await;
         }
         // current position is offset
-        self.position_offset = expected - self.driver.get_position().await;
+        self.position_offset = expected - self.driver.measure().await?.position;
         dbg!(self.position_offset);
         self.disable();
         Ok(())
     }
-    pub async fn calibrate_vibrations(&mut self, torque: Float, frequency: Float) -> Result<(), &'static str> {
-        let rotation = frequency / 64.;
-        let measures = RollingBuffer::new();
+    pub async fn calibrate_vibrations(&mut self, _torque: Float, _frequency: Float) -> Result<(), ControlError> {
+//         let rotation = frequency / 64.;
+//         let measures = RollingBuffer::new();
+        todo!()
     }
 }
 
@@ -240,10 +254,14 @@ impl TorqueControl {
     pub fn disable(&mut self) {
         self.integral = Vector::zero();
     }
-    /// take target current (relative) and specify target voltage (relative) to reach it
-    pub fn step(&mut self, current_field: Vector<Float,2>, target_torque: Float, max_voltage: Float) -> (Float, Vector<Float,2>) {
+    /// return the current torque produced
+    pub fn observe(&mut self, current_field: Vector<Float,2>) -> Float {
         // only field orthogonal to rotor contributes to torque
         let current_torque = current_field[1] * self.motor.rated_torque / self.motor.rated_current;
+        current_torque
+    }
+    /// take target current (relative) and specify target voltage (relative) to reach it
+    pub fn control(&mut self, current_field: Vector<Float,2>, target_torque: Float, max_voltage: Float) -> Vector<Float,2> {
         // motor characteristics gives relation between torque and current
         let target_current = target_torque / self.motor.rated_torque * self.motor.rated_current;
         // optimal field for desired torque (no need to waste energy on parallel direction)
@@ -268,7 +286,7 @@ impl TorqueControl {
             target_voltage = clamped;
         }
         
-        (current_torque, target_voltage)
+        target_voltage
     }
 }
 

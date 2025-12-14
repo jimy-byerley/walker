@@ -1,0 +1,12 @@
+[package]
+name = "control-software"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bilge = "0.3"
+packbytes = { version="0.2", features = ['packbytes-derive'], default-features=false }
+futures-concurrency = { version = "7.6", default-features=false }
+tokio = { version="^1.48", features = ["io-util", "time", "rt-multi-thread", "macros"] }
+
+uartcat = { version = "0.1.2", features = ["master"], path = "../uartcat" }

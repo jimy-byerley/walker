@@ -68,7 +68,8 @@ pub struct Status {
 }
 pack_bilge!(Status);
 
-#[derive(Copy, Clone, FromBytes, ToBytes, Debug)]
+
+#[derive(Copy, Clone, FromBytes, ToBytes)]
 pub struct Range {
     pub start: f32,
     pub stop: f32,
