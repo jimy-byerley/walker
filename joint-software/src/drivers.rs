@@ -16,14 +16,12 @@ use num_traits::float::Float as FloatTrait;
 use vecmat::Vector;
 use esp_println::dbg;
 
+use crate::prelude::*;
 use crate::{
-    as5600::{self, As5600},
-    foc::{Driver, Measure, ControlError},
+    registers::ControlError,
     nb_task,
     };
 
-type Float = f32;
-const PHASES: usize = 3;
 
 
 /*
@@ -150,28 +148,22 @@ where
     }
 }*/
 
-
 /// rotor position with AS5600 and no current sensing
-pub struct Mk2<'d, I2C, PWM> {
+pub struct MksDualFocV32<'d, PWM> {
     power_enable: Output<'d>,
     power_pins: (
         PwmPin<'d, PWM, 0, true>,
         PwmPin<'d, PWM, 1, true>,
         PwmPin<'d, PWM, 2, true>,
         ),
-    position_sensor: As5600<'d, I2C>,
     modulation_to_current: Float,
     current_estimation: Vector<Float, PHASES>,
 }
-impl<'d, I2C, PWM> 
-Mk2<'d, I2C, PWM> 
-where
-    I2C: I2c,
-    PWM: PwmPeripheral + 'd,
+impl<'d, PWM> 
+MksDualFocV32<'d, PWM> 
+where PWM: PwmPeripheral + 'd,
 {
     pub fn new(
-        bus: &'d RefCell<I2C>,
-        
         power_enable: impl OutputPin + 'd,
         power_pwm: PWM,
         power_pins: (
@@ -200,50 +192,24 @@ where
             .timer_clock_with_frequency(99, PwmWorkingMode::UpDown, Rate::from_khz(20)).unwrap(); 
         mcpwm.timer0.start(timer_clock_cfg);
      
-        let position_sensor = As5600::new(bus);
-        
         Self {
             power_enable,
             power_pins,
-            position_sensor,
             modulation_to_current: power_voltage / phases_resistance,
-            current_estimation: Vector::from([0.; PHASES]),
+            current_estimation: Vector::from([0.; 3]),
             }
     }
-}
-impl<'d, I2C, PWM> 
-Driver for Mk2<'d, I2C, PWM> 
-where
-    I2C: I2c,
-    PWM: PwmPeripheral + 'd,
-{
-    fn check(&mut self) -> impl Future<Output=Result<(), ControlError>> {
-        async {
-            self.position_sensor.check().await.map_err(|e| match e {
-                as5600::Error::I2c(_) => ControlError::PositionSensorNotDetected,
-                as5600::Error::Sensor(_) => ControlError::PositionMagnetNotDetected,
-            })
-        }
+    pub async fn measure(&mut self) -> Result<Vector<Float, 3>, ControlError> {
+        Ok(self.current_estimation)
     }
-    fn measure(&mut self) -> impl Future<Output=Result<Measure, ControlError>> {
-        async { Ok(Measure {
-            position: self.position_sensor.angle().await.map_err(|_| ControlError::PositionSensorNotDetected)?,
-            currents: self.current_estimation,
-            modulations: Vector::from([
-                Float::from(self.power_pins.0.timestamp()) / Float::from(self.power_pins.0.period()),
-                Float::from(self.power_pins.1.timestamp()) / Float::from(self.power_pins.1.period()),
-                Float::from(self.power_pins.2.timestamp()) / Float::from(self.power_pins.2.period()),
-                ]),
-            }) }
-    }
-    fn modulate(&mut self, modulations: Vector<Float, PHASES>) {
+    pub fn modulate(&mut self, modulations: Vector<Float, 3>) {
         self.power_enable.set_high();
         self.power_pins.0.set_timestamp((modulations[0] * Float::from(self.power_pins.0.period())).round() as _);
         self.power_pins.1.set_timestamp((modulations[1] * Float::from(self.power_pins.1.period())).round() as _);
         self.power_pins.2.set_timestamp((modulations[2] * Float::from(self.power_pins.2.period())).round() as _);
         self.current_estimation = modulations * self.modulation_to_current;
     }
-    fn disable(&mut self) {
+    pub fn disable(&mut self) {
         self.power_enable.set_low();
     }
 }
