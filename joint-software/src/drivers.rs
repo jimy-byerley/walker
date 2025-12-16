@@ -1,8 +1,4 @@
 
-use core::{
-    cell::RefCell,
-    future::Future,
-    };
 use esp_hal::{
     gpio::{*, interconnect::PeripheralOutput},
     analog::adc::*,

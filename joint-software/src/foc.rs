@@ -1,8 +1,3 @@
-// use nalgebra::{Matrix, SMatrix, SVector, Vector2, Matrix2, Rotation2};
-use core::{
-    future::Future,
-    ops::DerefMut,
-    };
 use num_traits::float::{Float as FloatTrait, FloatConst};
 use vecmat::{
     prelude::{Zero, Dot},
@@ -10,11 +5,9 @@ use vecmat::{
     matrix::Matrix,
     transform::Rotation2,
     };
-use embassy_time::{Duration, Instant, Timer};
 use esp_println::{println, dbg};
 
 use crate::prelude::*;
-pub use crate::registers::ControlError;
 
 
 // fn flat() {
@@ -121,7 +114,7 @@ impl Foc {
     }
     /// return the current torque produced
     pub fn observe(&mut self, position: Float, currents: Vector<Float, PHASES>) -> Float {
-        self.transform.set_position(position);
+        self.transform.set_position(position * Float::PI()*2.);
         let current_field = self.transform.phases_to_rotor(currents);
         // only field orthogonal to rotor contributes to torque
         let current_torque = current_field[1] * self.motor.rated_torque / self.motor.rated_current;

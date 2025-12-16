@@ -19,7 +19,7 @@ pub mod current {
 pub mod target {
     use super::*;
     
-    pub const CONTROL: SlaveRegister<Control> = Register::new(0x540);
+    pub const MODE: SlaveRegister<Mode> = Register::new(0x540);
     /// affine force reaction
     pub const FORCE: SlaveRegister<f32> = Register::new(0x544);
     pub const FORCE_CONSTANT: SlaveRegister<f32> = Register::new(0x560);
@@ -49,14 +49,17 @@ pub const VOLTAGE_UNIT: f32 = 1. / (1u16<<12) as f32;
 
 
 #[bitsize(8)]
-#[derive(Copy, Clone, FromBits, PartialEq, Default, DebugBits)]
-pub struct Control {
-    pub reset: bool,
-    pub power: bool,
-    pub calibrate: bool,
-    _reserved: u5,
+#[derive(Copy, Clone, FromBits, PartialEq, Default, Debug)]
+pub enum Mode {
+    #[default]
+    #[fallback]
+    Off = 0,
+    Control = 1,
+    CalibrateImpedance = 2,
+    CalibrateFocConstant = 3,
+    CalibrateFocVibrations = 4,
 }
-pack_bilge!(Control);
+pack_enum!(Mode);
 
 #[bitsize(8)]
 #[derive(Copy, Clone, FromBits, PartialEq, Default, DebugBits)]

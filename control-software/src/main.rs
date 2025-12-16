@@ -1,5 +1,6 @@
 use std::time::Duration;
 use futures_concurrency::future::Race;
+use packbytes::{FromBytes, ToBytes};
 use uartcat::master::Host;
 
 pub mod registers;
@@ -11,21 +12,14 @@ async fn main() -> Result<(), uartcat::master::Error> {
     let task = async {
         let slave = master.slave(Host::Topological(0));
         
-        let mut control = registers::Control::default();
-        
         println!("reset errors");
-        while slave.read(registers::current::STATUS).await 
-                .expect("no answer from slave")
-                .one().unwrap().fault() {
-            control.set_reset(true);
-            slave.write(registers::target::CONTROL, control).await?.one()?;
-        }
-        control.set_reset(false);
+        slave.write(registers::target::MODE, registers::Mode::Off).await
+            .expect("no answer from slave")
+            .one().expect("wrong number of slaves");
+        while slave.read(registers::current::STATUS).await?.one()?.fault() {}
         
         println!("calibrate");
-        control.set_power(true);
-        control.set_calibrate(true);
-        slave.write(registers::target::CONTROL, control).await?.one()?;
+        slave.write(registers::target::MODE, registers::Mode::CalibrateFocConstant).await?.one()?;
         loop {
             let status = slave.read(registers::current::STATUS).await?.one()?;
             if status.fault() {
@@ -35,8 +29,6 @@ async fn main() -> Result<(), uartcat::master::Error> {
             if status.calibrated() {break;}
             tokio::time::sleep(Duration::from_millis(300)).await;
         }
-        control.set_calibrate(false);
-        slave.write(registers::target::CONTROL, control).await?.one()?;
         
         println!("apply constant force");
         let rated_force = slave.read(registers::typical::RATED_FORCE).await?.one()?;
@@ -45,19 +37,59 @@ async fn main() -> Result<(), uartcat::master::Error> {
         slave.write(registers::target::LIMIT_VELOCITY, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
         slave.write(registers::target::LIMIT_FORCE, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
         slave.write(registers::target::FORCE, rated_force * 0.8).await?.one()?;
+        slave.write(registers::target::MODE, registers::Mode::Control).await?.one()?;
+
+//         loop {
+//             dbg!(
+//                 slave.read(registers::current::ERROR).await?.one()?,
+//                 slave.read(registers::current::POSITION).await?.one()?,
+//                 slave.read(registers::current::FORCE).await?.one()?,
+// //                 slave.read(registers::current::CURRENTS).await?.one()?,
+// //                 slave.read(registers::current::VOLTAGES).await?.one()?,
+//                 );
+//             tokio::time::sleep(Duration::from_millis(300)).await;
+//         }
+        
+        let mut mapping = uartcat::master::Mapping::new();
+        let buffer = mapping.buffer::<State>().unwrap()
+            .register(slave.address(), registers::current::ERROR)
+            .register(slave.address(), registers::current::POSITION)
+            .register(slave.address(), registers::current::VELOCITY)
+            .register(slave.address(), registers::current::FORCE)
+            .register(slave.address(), registers::current::CURRENTS)
+            .register(slave.address(), registers::current::VOLTAGES)
+            .build();
+        
+        mapping.configure(&slave).await.unwrap();
+        
+        let stream = master.stream(buffer).await?;
+        stream.send_read().await.unwrap();
+        let rr = rerun::RecordingStreamBuilder::new("joint control").spawn().unwrap();
+
         loop {
-            dbg!(
-                slave.read(registers::current::ERROR).await?.one()?,
-                slave.read(registers::current::POSITION).await?.one()?,
-                slave.read(registers::current::FORCE).await?.one()?,
-//                 slave.read(registers::current::CURRENTS).await?.one()?,
-//                 slave.read(registers::current::VOLTAGES).await?.one()?,
-                );
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            stream.send_read().await.unwrap();
+            let data = stream.receive().await?.one()?;
+            
+            rr.log("position", &rerun::Scalars::single(data.position)).unwrap();
+            rr.log("velocity", &rerun::Scalars::single(data.velocity)).unwrap();
+            rr.log("force", &rerun::Scalars::single(data.force)).unwrap();
+            rr.log("currents", &rerun::Scalars::new(data.currents.phases.into_iter())).unwrap();
+            rr.log("voltages", &rerun::Scalars::new(data.voltages.phases.into_iter())).unwrap();
         }
     };
     let com = async {
         Ok(master.run().await?)
     };
     (task, com).race().await
+}
+
+#[derive(FromBytes, ToBytes, Debug)]
+struct State {
+    error: registers::ControlError,
+    position: f32,
+    velocity: f32,
+    force: f32,
+    currents: registers::Phases,
+    voltages: registers::Phases,
 }

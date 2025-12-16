@@ -10,3 +10,4 @@ futures-concurrency = { version = "7.6", default-features=false }
 tokio = { version="^1.48", features = ["io-util", "time", "rt-multi-thread", "macros"] }
 
 uartcat = { version = "0.1.2", features = ["master"], path = "../uartcat" }
+rerun = "0.27.3"
