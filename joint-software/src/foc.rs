@@ -84,26 +84,18 @@ pub struct Foc {
 }
 impl Foc {
     /// gains must be continuous time, period will be used to convert them to discrete gains
-    pub fn new(period: Float, motor: MotorProfile, gains: CorrectorGains) -> Result<Self, &'static str> {
-        Ok(Self {
+    pub fn new(period: Float, motor: MotorProfile, gains: CorrectorGains) -> Self {
+        Self {
             motor,
             period,
             gains: CorrectorGains {                
-                proportional: Self::continuous_to_discrete_gain(period, gains.proportional)?,
-                integral: Self::continuous_to_discrete_gain(period, gains.integral)?,
+                proportional: continuous_to_discrete_gain(period, gains.proportional),
+                integral: continuous_to_discrete_gain(period, gains.integral),
                 },
             integral: Vector::zero(),
             current_field: Vector::zero(),
             transform: SpaceVectorTransform::new(),
-        })
-    }
-    fn continuous_to_discrete_gain(period: Float, proportional: Float) -> Result<Float, &'static str> {
-        let gain = (1. - (-proportional * period).exp()) / period;
-        // we consider any phenomenon faster than this control loop to be out of control
-        if gain * period > 1.
-            {return Err("gain is higher than control loop frequency")}
-        // zero order hold coefficient for getting the same result as a continuous correction on a 1st order system
-        Ok(gain)
+        }
     }
     pub fn period(&self) -> Float {
         self.period
@@ -114,7 +106,7 @@ impl Foc {
     }
     /// return the current torque produced
     pub fn observe(&mut self, position: Float, currents: Vector<Float, PHASES>) -> Float {
-        self.transform.set_position(position * Float::PI()*2.);
+        self.transform.set_position(position * Float::PI()*2. * Float::from(self.motor.poles));
         let current_field = self.transform.phases_to_rotor(currents);
         // only field orthogonal to rotor contributes to torque
         let current_torque = current_field[1] * self.motor.rated_torque / self.motor.rated_current;
@@ -131,7 +123,7 @@ impl Foc {
         // considering one phase alone:  u = R i + L di/dt
         // use resistance for feed forward
         let mut target_voltage = target_field * self.motor.phase_resistance;
-        // use indicutance for correction
+        // use inductance for correction
         let error = target_field - self.current_field;
         self.integral += error * self.period;
         // proportional correction
@@ -153,36 +145,54 @@ impl Foc {
 
 
 pub struct MultiTurnObserver {
+    period: Float,
+    lowpass_rate: Float,
     last_absolute: Float,
     last_velocity: Float,
-    period: Float,
 }
 impl MultiTurnObserver {
-    pub fn new(period: Float) -> Self {
+    pub fn new(period: Float, lowpass: Float) -> Self {
         Self {
+            period,
+            lowpass_rate: continuous_to_discrete_filter(period, lowpass),
             last_absolute: 0.,
             last_velocity: 0.,
-            period,
         }
     }
     pub fn reset(&mut self, absolute: Float) {
         self.last_absolute = absolute;
     }
     pub fn observe(&mut self, relative: Float) -> (Float, Float) {
-        let expected = self.last_absolute + 0.5*self.last_velocity * self.period;
-        let error = relative - expected % 1.;
+    // TODO enavble this when velocity is smoother
+//         let expected = self.last_absolute + 0.5*self.last_velocity * self.period;
+        let expected = self.last_absolute;
+        let error = relative - rem_euclid(expected, 1.);
         // always assume less than 1 revolution occured
         let absolute = expected + error + (
-            if expected > 0.5 {-1.}
-            else if expected < -0.5 {1.}
+            if error > 0.5 {-1.}
+            else if error < -0.5 {1.}
             else {0.}
             );
-        self.last_velocity = (absolute - self.last_absolute) / self.period;
+        // TODO try getting velocity AND acceleration with polynomial least squares regression over a rolling buffer
+        // low-pass filter velocity
+        if error.abs() < 0.1 {
+            self.last_velocity = self.last_velocity*(1.-self.lowpass_rate) + (absolute - self.last_absolute) / self.period * self.lowpass_rate;
+        }
         self.last_absolute = absolute;
         (absolute, self.last_velocity)
     }
 }
 
+fn rem_euclid(x: Float, r: Float) -> Float {
+    if x >= 0. {x % r} else {r + x % r}
+}
+
+fn continuous_to_discrete_gain(period: Float, proportional: Float) -> Float {
+    (1. - (-proportional * period).exp()) / period
+}
+fn continuous_to_discrete_filter(period: Float, proportional: Float) -> Float {
+    1. - (-proportional * period).exp()
+}
 
 pub struct SpaceVectorTransform<const N: usize> {
     // transformation matrices
@@ -218,17 +228,14 @@ impl<const N: usize> SpaceVectorTransform<N> {
 
 /// if voltage out of bounds, center it to reduce saturations, then saturate
 pub fn clamp_voltage(voltages: Vector<Float, PHASES>, saturation: (Float, Float)) -> Vector<Float, PHASES> {
-    
     let range = (voltages.min(), voltages.max());
-    if range.0 < saturation.0 || range.1 > saturation.1 {
-        let center = (range.1 + range.0) * 0.5;
-        (voltages - Vector::fill(center)).clamp(saturation.0, saturation.1)
-    }
-    else {voltages}
+    let sat_center = (saturation.1 + saturation.0) * 0.5;
+    let range_center = (range.1 + range.0) * 0.5;
+    (voltages + Vector::fill(sat_center - range_center)).clamp(saturation.0, saturation.1)
 }
 
-pub fn control_barrier(_command: Float, _limited: Float, _limit: (Float, Float), _rate: Float) -> Float {
-    todo!()
+pub fn control_barrier(command: Float, _limited: Float, _limit: (Float, Float), _rate: Float) -> Float {
+    return command
 }
 
 

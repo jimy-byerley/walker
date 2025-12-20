@@ -20,7 +20,7 @@ use embassy_executor::Spawner;
 use embassy_time::{Instant, Duration, Timer};
 use futures_concurrency::future::Join;
 use esp_println::dbg;
-use num_traits::FloatConst;
+use num_traits::{Float as _Float, FloatConst};
 
 mod utils;
 mod prelude;
@@ -84,12 +84,7 @@ async fn main(_spawner: Spawner) {
             .into_async()
     );
     
-    let period = 0.5e-3; // second
-    let power_voltage = 15.; // volts
-    let gains = CorrectorGains {
-        proportional: 10., // Hz
-        integral: 5., // Hz
-    };
+    let power_voltage = 24.; // volts
     let gearbox_ratio = 30.;
     let motor = MotorProfile {
         poles: 2,
@@ -98,12 +93,19 @@ async fn main(_spawner: Spawner) {
         rated_torque: 62e-3, // N.m
         rated_current: 0.91, // amps
     };
+    
+    let period = 0.5e-3; // second
+    let gains = CorrectorGains {
+        proportional: 10., // Hz
+        integral: 5., // Hz
+    };
+    let velocity_lowpass = 100.; // Hz
 
     let mut driver = Driver {
         motor,
         power_voltage,
-        rotor_output_ratio: 1. / gearbox_ratio,
-        output_stator_ratio: gearbox_ratio * (1. + 1. / gearbox_ratio),
+        encoder_to_output: 1. / gearbox_ratio,
+        encoder_to_rotor: 1. + 1. / gearbox_ratio,
         slave: &slave,
         motor_driver: MksDualFocV32::new(
             peripherals.GPIO22,
@@ -113,8 +115,8 @@ async fn main(_spawner: Spawner) {
             power_voltage,
             ),
         rotor_sensor: As5600::new(&bus),
-        foc: Foc::new(period, motor, gains).unwrap(),
-        multiturn: MultiTurnObserver::new(period),
+        foc: Foc::new(period, motor, gains),
+        multiturn: MultiTurnObserver::new(period, velocity_lowpass),
         rotor_offset: 0.,
         mode: Mode::default(),
         error: ControlError::default(),
@@ -128,8 +130,8 @@ async fn main(_spawner: Spawner) {
 struct Driver<'d, PWM, const MEM: usize> {
     motor: MotorProfile,
     power_voltage: Float,
-    rotor_output_ratio: Float,
-    output_stator_ratio: Float,
+    encoder_to_output: Float,
+    encoder_to_rotor: Float,
     slave: &'d uartcat::slave::Slave<Uart<'d, esp_hal::Async>, MEM>,
     motor_driver: MksDualFocV32<'d, PWM>,
     rotor_sensor: As5600<'d, I2c<'d, esp_hal::Async>>,
@@ -154,6 +156,7 @@ Driver<'d, PWM, MEM> {
                 Mode::CalibrateImpedance => self.calibrate_impedance().await,
                 Mode::CalibrateFocConstant => self.calibrate_foc_constant().await,
                 Mode::CalibrateFocVibrations => self.calibrate_foc_vibrations().await,
+                Mode::CalibrateFocContinuous => self.calibrate_foc_continuous().await,
             } {
                 self.error = err;
             }
@@ -171,20 +174,20 @@ Driver<'d, PWM, MEM> {
     }
     
     async fn control(&mut self) -> Result<(), ControlError> {
-        let mut voltages = Vector::zero();
         let period = self.foc.period();
         
         loop {
             let step = async {
                 // measures
-                let position_rotor = self.rotor_sensor.angle().await.unwrap();
-                let currents = self.motor_driver.measure().await?;
+                let position_encoder = self.rotor_sensor.angle().await.unwrap();
+                let (currents, voltages) = self.motor_driver.measure().await?;
                 
                 // observations
-                let (position_multi, velocity_multi) = self.multiturn.observe(position_rotor);
-                let position = position_multi * self.rotor_output_ratio;
-                let velocity = velocity_multi * self.rotor_output_ratio;
-                let force = self.foc.observe(position * self.output_stator_ratio + self.rotor_offset, currents);
+                let (position_multi, velocity_multi) = self.multiturn.observe(position_encoder);
+                let position = position_multi * self.encoder_to_output;
+                let velocity = velocity_multi * self.encoder_to_output;
+                let force = self.foc.observe(position_multi * self.encoder_to_rotor + self.rotor_offset, currents);
+//                 let force = self.foc.observe(position_rotor, currents);
                 
                 // exchanges
                 let mut buffer = self.slave.lock().await;
@@ -193,8 +196,8 @@ Driver<'d, PWM, MEM> {
                 buffer.set(registers::current::POSITION, position);
                 buffer.set(registers::current::VELOCITY, velocity);
                 buffer.set(registers::current::FORCE, force);
-                buffer.set(registers::current::CURRENTS, currents.as_array().map(|x|  (x * registers::CURRENT_UNIT) as _).into());
-                buffer.set(registers::current::VOLTAGES, voltages.as_array().map(|x|  (x * registers::VOLTAGE_UNIT) as _).into());
+                buffer.set(registers::current::CURRENTS, currents.as_array().map(|x|  (x / registers::CURRENT_UNIT) as _).into());
+                buffer.set(registers::current::VOLTAGES, voltages.as_array().map(|x|  (x / registers::VOLTAGE_UNIT) as _).into());
                 self.mode = buffer.get(registers::target::MODE);
                 let force_command = buffer.get(registers::target::FORCE);
                 let force_constant = buffer.get(registers::target::FORCE_CONSTANT);
@@ -210,7 +213,6 @@ Driver<'d, PWM, MEM> {
                     self.status.set_powered(false);
                     self.status.set_fault(false);
                     self.error = ControlError::None;
-                    voltages = Vector::zero();
                     self.foc.disable();
                     self.motor_driver.disable();
                 },
@@ -220,12 +222,13 @@ Driver<'d, PWM, MEM> {
                     let target_force = target_force.clamp(limit_force.start, limit_force.stop);
                     let target_force = control_barrier(target_force, position, (limit_position.start, limit_position.stop), 0.);
                     let target_force = control_barrier(target_force, velocity, (limit_velocity.start, limit_velocity.stop), 0.);
-                    voltages = self.foc.control(target_force, self.power_voltage);
-                    self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
+                    let voltages = self.foc.control(target_force, self.power_voltage);
+                    let modulations = clamp_voltage(voltages / self.power_voltage, (0., 1.));
+                    let voltages = self.power_voltage * modulations;
+                    self.motor_driver.modulate(modulations);
                 },
                 _ => {
                     if self.error != ControlError::None {
-                        voltages = Vector::zero();
                         self.foc.disable();
                         self.motor_driver.disable();
                     }
@@ -242,40 +245,181 @@ Driver<'d, PWM, MEM> {
     
     async fn calibrate_impedance(&mut self) -> Result<(), ControlError> {todo!()}
     async fn calibrate_foc_constant(&mut self) -> Result<(), ControlError> {
+        todo!()
+//         self.status.set_powered(true);
+//         self.status.set_calibrated(false);
+//         self.slave.lock().await.set(registers::current::STATUS, self.status);
+//         
+//         let target_force = self.motor.rated_torque;
+//         let duration = Duration::from_millis(1000);
+//         let end = Instant::now() + duration;
+//         // reset field orientation
+//         let expected = 0.;
+//         loop {
+//             let (currents, _) = self.motor_driver.measure().await?;
+//     
+//             self.foc.observe(expected - 1. / 4. / Float::from(self.motor.poles), currents);
+//             let voltages = self.foc.control(target_force, self.power_voltage);
+//             self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
+//             
+//             // wait for position to stabilize
+//             if Instant::now() > end {
+// //                 if (current_torque - torque).abs() / torque < 0.2 {
+// //                     return Err("current control failed");
+// //                 }
+//                 break;
+//             }
+//             Timer::after(Duration::from_micros((self.foc.period() * 1e6) as _)).await;
+//         }
+//         // compute the offset so the current position gives position 0 relative to stator
+//         let position_rotor = self.rotor_sensor.angle().await .unwrap();
+//         let (position_multi, velocity_multi) = self.multiturn.observe(position_rotor);
+//         self.rotor_offset = expected - position_multi * self.encoder_to_output * self.output_stator_ratio;
+//         
+//         self.motor_driver.modulate(Vector::zero());
+//         self.motor_driver.disable();
+//         
+//         self.status.set_powered(false);
+//         self.status.set_calibrated(true);
+//         self.slave.lock().await.set(registers::current::STATUS, self.status);
+//         self.slave.lock().await.set(registers::target::MODE, Mode::Off);
+//         self.mode = Mode::Off;
+//         Ok(())
+    }
+    async fn calibrate_foc_vibrations(&mut self) -> Result<(), ControlError> {
+        todo!()
+//         let start = Instant::now();
+//         let vibration_frequency = 4.;
+//         let rotation_frequency = 0.2;
+//         let rotations = 2.;
+//         
+//         let mut inperiod_result = Vector::<Float, 2>::zero();
+//         let mut inperiod_amount = 0;
+//         let mut outperiod_samples = heapless::Vec::<Vector<Float, 3>, 1000>::new();
+//         
+//         let mut period = 0;
+//         loop {
+//             let position_rotor = self.rotor_sensor.angle().await.unwrap();
+//             let (currents, voltages) = self.motor_driver.measure().await?;
+//             // observations
+//             let (position_multi, velocity_multi) = self.multiturn.observe(position_rotor);
+//             let position = position_multi * self.encoder_to_output;
+//             let velocity = velocity_multi * self.encoder_to_output;
+//             let force = self.foc.observe(position_rotor, currents);
+//             
+//             {
+//                 // exchanges
+//                 let mut buffer = self.slave.lock().await;
+//                 buffer.set(registers::current::STATUS, self.status);
+//                 buffer.set(registers::current::ERROR, self.error);
+//                 buffer.set(registers::current::POSITION, position);
+//                 buffer.set(registers::current::VELOCITY, velocity);
+//                 buffer.set(registers::current::FORCE, force);
+//                 buffer.set(registers::current::CURRENTS, currents.as_array().map(|x|  (x / registers::CURRENT_UNIT) as _).into());
+//                 buffer.set(registers::current::VOLTAGES, voltages.as_array().map(|x|  (x / registers::VOLTAGE_UNIT) as _).into());
+//             }
+//             
+//             // decision
+//             let t = (start.elapsed().as_millis() as f32)/1e6;
+//             let i = (t * vibration_frequency) as Float;
+//             if i > period {
+//                 outperiod.push(inperiod / (inperiod_amount as Float));
+//                 inperiod = Vector::zero();
+//             }
+//             inperiod += Vector::from([expected, position, velocity.abs()]);
+//             
+//             let expected = rotation_frequency * t;
+//             if expected > rotations {break Ok(())}
+//             
+//             let target_force = (vibration_frequency * t * f32::PI()).sin();
+//             
+//             // control
+//             self.foc.observe(expected - 1. / 4. / Float::from(self.motor.poles), currents);
+//             let voltages = self.foc.control(target_force, self.power_voltage);
+//             self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
+//         }
+        
+//         let (expected, position, velocity) = outperiod.iter().fold(Float::INFINITY, Float::min);
+//         dbg!(position, velocity);
+//         self.rotor_offset = expected - position_multi * self.encoder_to_output * self.output_stator_ratio;
+    }
+    
+    async fn calibrate_foc_continuous(&mut self) -> Result<(), ControlError> {
+        self.status.set_powered(true);
         self.status.set_calibrated(false);
         self.slave.lock().await.set(registers::current::STATUS, self.status);
+
+        let voltage = 0.5 * self.motor.rated_current * self.motor.phase_resistance;
+        let rotations = 2.;
+        let velocity = 0.5; // rotation/s
+
+        // correct the bias assuming it is the same in the two directions
+        let offset_positive = self.calibrate_biased_offset(0., rotations, velocity, voltage).await?;
+        let offset_negative = self.calibrate_biased_offset(rotations, 0., velocity, voltage).await?;
+        self.rotor_offset = (offset_positive + offset_negative) /2.;
         
-        let target_force = self.motor.rated_torque;
-        let duration = Duration::from_millis(1000);
-        let end = Instant::now() + duration;
-        // reset field orientation
-        let expected = 0.;
-        loop {
-            let currents = self.motor_driver.measure().await?;
-    
-            self.foc.observe(expected - Float::PI()/2., currents);
-            let voltages = self.foc.control(target_force, self.power_voltage);
-            self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
-            
-            // wait for position to stabilize
-            if Instant::now() > end {
-//                 if (current_torque - torque).abs() / torque < 0.2 {
-//                     return Err("current control failed");
-//                 }
-                break;
-            }
-            Timer::after(Duration::from_micros((self.foc.period() * 1e6) as _)).await;
-        }
-        // compute the offset so the current position gives position 0 relative to stator
-        let position_rotor = self.rotor_sensor.angle().await .unwrap();
-        let (position_multi, velocity_multi) = self.multiturn.observe(position_rotor);
-        self.rotor_offset = expected - position_multi * self.rotor_output_ratio * self.output_stator_ratio;
-        
+        // cleanup
         self.motor_driver.disable();
-        
+        self.status.set_powered(false);
         self.status.set_calibrated(true);
         self.slave.lock().await.set(registers::current::STATUS, self.status);
+        // wait an other mode
+        while self.slave.lock().await.get(registers::target::MODE) == Mode::CalibrateFocContinuous 
+            {Timer::after(Duration::from_millis(1)).await}
         Ok(())
     }
-    async fn calibrate_foc_vibrations(&mut self) -> Result<(), ControlError> {todo!()}
+    async fn calibrate_biased_offset(&mut self, start: Float, stop: Float, expected_velocity: Float, target_voltage: Float) -> Result<Float, ControlError> {
+        let mut transform = SpaceVectorTransform::new();
+        
+        let mut offsets = 0.;
+        let mut correlations = 0.;
+        
+        let elapsed = Instant::now();
+        loop {
+            let position_encoder = self.rotor_sensor.angle().await.unwrap();
+            let (currents, voltages) = self.motor_driver.measure().await?;
+            // observations
+            let (position_multi, velocity_multi) = self.multiturn.observe(position_encoder);
+            let position = position_multi * self.encoder_to_rotor;
+            let velocity = velocity_multi * self.encoder_to_rotor;
+            
+            {
+                // exchanges
+                let mut buffer = self.slave.lock().await;
+                buffer.set(registers::current::STATUS, self.status);
+                buffer.set(registers::current::ERROR, self.error);
+                buffer.set(registers::current::POSITION, position);
+                buffer.set(registers::current::VELOCITY, velocity);
+                buffer.set(registers::current::FORCE, 0.);
+                buffer.set(registers::current::CURRENTS, currents.as_array().map(|x|  (x / registers::CURRENT_UNIT) as _).into());
+                buffer.set(registers::current::VOLTAGES, voltages.as_array().map(|x|  (x / registers::VOLTAGE_UNIT) as _).into());
+                self.mode = buffer.get(registers::target::MODE);
+            }
+            if self.mode != Mode::CalibrateFocConstant {return Err(ControlError::CalibrationFailed)}
+            
+            let t = (elapsed.elapsed().as_millis() as f32)/1e6;
+            let expected_position;
+            if stop > start {
+                expected_position = start + expected_velocity * t;
+                if expected_position > stop {break}
+            }
+            else {
+                expected_position = start - expected_velocity * t;
+                if expected_position < stop {break}
+            }
+            
+            // integrate the possible value of offset between expected rotor position and position according to encoder
+            // TODO add wrapping logic to still catch unique offset while catchingup on an other period
+            let correlation = (expected_velocity * velocity).max(0.);
+            offsets += (expected_position - position) * correlation;
+            correlations += correlation;
+            
+            // set the field in the direction of position we want the motor to go
+            transform.set_position(expected_position);
+            let voltages = transform.rotor_to_phases(Vector::from([target_voltage, 0.]));
+            self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
+        }
+//             Ok(offsets / correlations + 1./8. /Float::from(self.motor.poles)) .copysign(expected_velocity); // average position during velocity peak should be more or less in the middle of the 1/4 dephasing
+        Ok(offsets / correlations)  // this offset is of cours biased by the non linear friction that can exist in the gearbox
+    }
 }

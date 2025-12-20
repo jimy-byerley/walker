@@ -153,7 +153,9 @@ pub struct MksDualFocV32<'d, PWM> {
         PwmPin<'d, PWM, 2, true>,
         ),
     modulation_to_current: Float,
+    modulation_to_voltage: Float,
     current_estimation: Vector<Float, PHASES>,
+    voltage_estimation: Vector<Float, PHASES>,
 }
 impl<'d, PWM> 
 MksDualFocV32<'d, PWM> 
@@ -192,11 +194,13 @@ where PWM: PwmPeripheral + 'd,
             power_enable,
             power_pins,
             modulation_to_current: power_voltage / phases_resistance,
-            current_estimation: Vector::from([0.; 3]),
+            modulation_to_voltage: power_voltage,
+            current_estimation: Vector::zero(),
+            voltage_estimation: Vector::zero(),
             }
     }
-    pub async fn measure(&mut self) -> Result<Vector<Float, 3>, ControlError> {
-        Ok(self.current_estimation)
+    pub async fn measure(&mut self) -> Result<(Vector<Float, 3>, Vector<Float, 3>), ControlError> {
+        Ok((self.current_estimation, self.voltage_estimation))
     }
     pub fn modulate(&mut self, modulations: Vector<Float, 3>) {
         self.power_enable.set_high();
@@ -204,8 +208,11 @@ where PWM: PwmPeripheral + 'd,
         self.power_pins.1.set_timestamp((modulations[1] * Float::from(self.power_pins.1.period())).round() as _);
         self.power_pins.2.set_timestamp((modulations[2] * Float::from(self.power_pins.2.period())).round() as _);
         self.current_estimation = modulations * self.modulation_to_current;
+        self.voltage_estimation = modulations * self.modulation_to_voltage;
     }
     pub fn disable(&mut self) {
         self.power_enable.set_low();
+        self.current_estimation = Vector::zero();
+        self.voltage_estimation = Vector::zero();
     }
 }

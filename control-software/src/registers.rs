@@ -58,6 +58,7 @@ pub enum Mode {
     CalibrateImpedance = 2,
     CalibrateFocConstant = 3,
     CalibrateFocVibrations = 4,
+    CalibrateFocContinuous = 5,
 }
 pack_enum!(Mode);
 
