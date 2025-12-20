@@ -353,10 +353,11 @@ Driver<'d, PWM, MEM> {
         let rotations = 2.;
         let velocity = 0.5; // rotation/s
 
-        // correct the bias assuming it is the same in the two directions
+        // measure offset between rotor position from encoder and field position
+        // correct the bias assuming they are opposite while moving in opposite directions
         let offset_positive = self.calibrate_biased_offset(0., rotations, velocity, voltage).await?;
         let offset_negative = self.calibrate_biased_offset(rotations, 0., velocity, voltage).await?;
-        self.rotor_offset = (offset_positive + offset_negative) /2.;
+        self.rotor_offset = (offset_positive + wrap_as(offset_negative, offset_positive, 1.)) /2.;
         
         // cleanup
         self.motor_driver.disable();
@@ -409,9 +410,10 @@ Driver<'d, PWM, MEM> {
             }
             
             // integrate the possible value of offset between expected rotor position and position according to encoder
-            // TODO add wrapping logic to still catch unique offset while catchingup on an other period
+            // add wrapping logic to still catch unique offset while catchingup on an other period
             let correlation = (expected_velocity * velocity).max(0.);
-            offsets += (expected_position - position) * correlation;
+            let offset = wrap_as(expected_position - position, offsets / correlations, 1.);
+            offsets += offset * correlation;
             correlations += correlation;
             
             // set the field in the direction of position we want the motor to go
@@ -419,7 +421,8 @@ Driver<'d, PWM, MEM> {
             let voltages = transform.rotor_to_phases(Vector::from([target_voltage, 0.]));
             self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
         }
-//             Ok(offsets / correlations + 1./8. /Float::from(self.motor.poles)) .copysign(expected_velocity); // average position during velocity peak should be more or less in the middle of the 1/4 dephasing
-        Ok(offsets / correlations)  // this offset is of cours biased by the non linear friction that can exist in the gearbox
+        // average position during velocity peak should be more or less in the middle of the 1/4 dephasing to field position giving max torque
+        // this offset is of cours biased by the non linear friction that can exist in the gearbox
+        Ok(offsets / correlations + 1./8. /Float::from(self.motor.poles) .copysign(expected_velocity))
     }
 }

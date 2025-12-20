@@ -159,6 +159,7 @@ impl MultiTurnObserver {
             last_velocity: 0.,
         }
     }
+    /// reset count of turns to the given absolute position
     pub fn reset(&mut self, absolute: Float) {
         self.last_absolute = absolute;
     }
@@ -166,31 +167,38 @@ impl MultiTurnObserver {
     // TODO enavble this when velocity is smoother
 //         let expected = self.last_absolute + 0.5*self.last_velocity * self.period;
         let expected = self.last_absolute;
-        let error = relative - rem_euclid(expected, 1.);
-        // always assume less than 1 revolution occured
-        let absolute = expected + error + (
-            if error > 0.5 {-1.}
-            else if error < -0.5 {1.}
-            else {0.}
-            );
+        let absolute = wrap_as(relative, expected, 1.);
+        let diff = absolute - self.last_absolute;
         // TODO try getting velocity AND acceleration with polynomial least squares regression over a rolling buffer
         // low-pass filter velocity
-        if error.abs() < 0.1 {
-            self.last_velocity = self.last_velocity*(1.-self.lowpass_rate) + (absolute - self.last_absolute) / self.period * self.lowpass_rate;
+        if diff.abs() < 0.1 {
+            self.last_velocity = self.last_velocity*(1.-self.lowpass_rate) + diff / self.period * self.lowpass_rate;
         }
         self.last_absolute = absolute;
         (absolute, self.last_velocity)
     }
 }
 
-fn rem_euclid(x: Float, r: Float) -> Float {
+/// euclid remainder
+pub fn rem_euclid(x: Float, r: Float) -> Float {
     if x >= 0. {x % r} else {r + x % r}
 }
 
-fn continuous_to_discrete_gain(period: Float, proportional: Float) -> Float {
+/// bring the given `value` the closest to `reference` by adding any multiple of `period`
+pub fn wrap_as(value: Float, reference: Float, period: Float) -> Float {
+    let difference = value - rem_euclid(reference, period);
+    // always assume less than 1 revolution occured
+    reference + difference + (
+        if difference > 0.5 {-period}
+        else if difference < -0.5 {period}
+        else {0.}
+        )
+}
+
+pub fn continuous_to_discrete_gain(period: Float, proportional: Float) -> Float {
     (1. - (-proportional * period).exp()) / period
 }
-fn continuous_to_discrete_filter(period: Float, proportional: Float) -> Float {
+pub fn continuous_to_discrete_filter(period: Float, proportional: Float) -> Float {
     1. - (-proportional * period).exp()
 }
 
