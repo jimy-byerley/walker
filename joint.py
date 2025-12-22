@@ -34,8 +34,8 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 		.transform(rotate(pi/4, Z)) )
 	
 	magnets = [
-		magnet.transform(translate(rotor_top - magnet.width/2*Z + (magnet_spacing+magnet.height/2)*Y) * rotate(pi/2, X) ),
-		magnet.transform(translate(rotor_top - magnet.width/2*Z - (magnet_spacing+magnet.height/2)*Y) * rotate(-pi/2, X) ),
+		magnet.transform(translate(rotor_top - magnet.width/2*Z + (magnet_spacing+magnet.height/2)*Y) * rotate(pi/4, X) ),
+		magnet.transform(translate(rotor_top - magnet.width/2*Z - (magnet_spacing+magnet.height/2)*Y) * rotate(-pi/4, X) ),
 		]
 	
 	def build_rotor():
@@ -76,14 +76,14 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 			+ cylinder(rotor_top+play*Z, rotor_top-motor.lshaft*Z, coupling_dscrew/2).flip(),
 			)
 		def magnet_slot(magnet):
-			magnet_bounds = magnet.body.transform(magnet.pose).box()
+			magnet_bounds = magnet.body.box()
 			return extrusion(
-				convexoutline(web([
-					Circle(Axis(magnet_bounds.map(vec3(0, 0.5, 0.5))-play*X, Z), magnet_bounds.size.y/2),
-					Circle(Axis(magnet_bounds.map(vec3(1, 0.5, 0.5))+play*X, Z), magnet_bounds.size.y/2),
-					])),
-				motor.lshaft*3*Z,
-				alignment=0.5).orient().flip()
+				flatsurface(convexoutline(web([
+					Circle(Axis(magnet_bounds.map(vec3(0, 0.5, 0.5))-play*X, Y), magnet_bounds.size.z/2),
+					Circle(Axis(magnet_bounds.map(vec3(1, 0.5, 0.5))+play*X, Y), magnet_bounds.size.z/2),
+					]))),
+				magnet_bounds.size.y*1.2*Y,
+				alignment=0.5).orient().flip() .transform(magnet.pose)
 		magnet_slots = mesh.mesh([ magnet_slot(magnet)  for magnet in magnets])
 		holes = [
 			cylinder(
@@ -227,5 +227,5 @@ if __name__ == '__madcad__':
 	settings.resolution = ('sqradm', 0.3)
 	
 	j = joint(rext=50, motor_length=73)
-#	export(j, f"{__file__}/../out/joint-v1.3", (j.gearbox.rext, j.gearbox.height, round(j.motor.length)))
+#	export(j, f"{__file__}/../out/joint-v1.4", (j.gearbox.rext, j.gearbox.height, round(j.motor.length)))
 	
