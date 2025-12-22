@@ -39,9 +39,13 @@ async fn main() -> Result<(), uartcat::master::Error> {
                     println!("calibration error {:?}", slave.read(registers::current::ERROR).await?.one()?);
                     panic!("failed to calibrate");
                 }
-                if status.calibrated() {break;}
+                if status.calibrated() {
+                    println!("calibration done");
+                    break;
+                }
                 tokio::time::sleep(Duration::from_millis(300)).await;
             }
+            slave.write(registers::target::MODE, registers::Mode::Off).await?.one()?;
             
             println!("apply constant force");
             let rated_force = slave.read(registers::typical::RATED_FORCE).await?.one()?;
@@ -49,7 +53,7 @@ async fn main() -> Result<(), uartcat::master::Error> {
             slave.write(registers::target::LIMIT_POSITION, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
             slave.write(registers::target::LIMIT_VELOCITY, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
             slave.write(registers::target::LIMIT_FORCE, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
-            slave.write(registers::target::FORCE, rated_force * 0.8).await?.one()?;
+            slave.write(registers::target::FORCE, rated_force * 0.5).await?.one()?;
             slave.write(registers::target::MODE, registers::Mode::Control).await?.one()?;
             
             future::pending().await
@@ -62,7 +66,8 @@ async fn main() -> Result<(), uartcat::master::Error> {
             loop {
                 tokio::time::sleep(Duration::from_millis(10)).await;
                 stream.send_read().await.unwrap();
-                let data = stream.receive().await?.one()?;
+//                 let data = stream.receive().await.unwrap().one().unwrap();
+                let data = stream.get().await;
                 
                 rr.log("position", &rerun::Scalars::single(data.position)).unwrap();
                 rr.log("velocity", &rerun::Scalars::single(data.velocity)).unwrap();

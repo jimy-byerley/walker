@@ -36,11 +36,11 @@ pub mod target {
 pub mod typical {
     use super::*;
     
-    pub const RATED_FORCE: SlaveRegister<f32> = Register::new(0x5ae);
-    pub const RATED_CURRENT: SlaveRegister<f32> = Register::new(0x5ae);
-    pub const MAX_VOLTAGE: SlaveRegister<f32> = Register::new(0x5a2);
-    pub const MAX_CURRENT: SlaveRegister<f32> = Register::new(0x5a6);
-    pub const MAX_FORCE: SlaveRegister<f32> = Register::new(0x5aa);
+    pub const RATED_FORCE: SlaveRegister<f32> = Register::new(0x5a0);
+    pub const RATED_CURRENT: SlaveRegister<f32> = Register::new(0x5a4);
+    pub const MAX_VOLTAGE: SlaveRegister<f32> = Register::new(0x5a8);
+    pub const MAX_CURRENT: SlaveRegister<f32> = Register::new(0x5ac);
+    pub const MAX_FORCE: SlaveRegister<f32> = Register::new(0x5b0);
 }
 pub const END: usize = 0x5d0;
 

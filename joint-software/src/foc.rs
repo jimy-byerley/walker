@@ -1,10 +1,4 @@
 use num_traits::float::{Float as FloatTrait, FloatConst};
-use vecmat::{
-    prelude::{Zero, Dot},
-    vector::Vector,
-    matrix::Matrix,
-    transform::Rotation2,
-    };
 use esp_println::{println, dbg};
 
 use crate::prelude::*;
@@ -106,7 +100,7 @@ impl Foc {
     }
     /// return the current torque produced
     pub fn observe(&mut self, position: Float, currents: Vector<Float, PHASES>) -> Float {
-        self.transform.set_position(position * Float::PI()*2. * Float::from(self.motor.poles));
+        self.transform.set_position(position * Float::from(self.motor.poles) * Float::PI()*2.);
         let current_field = self.transform.phases_to_rotor(currents);
         // only field orthogonal to rotor contributes to torque
         let current_torque = current_field[1] * self.motor.rated_torque / self.motor.rated_current;
@@ -123,21 +117,21 @@ impl Foc {
         // considering one phase alone:  u = R i + L di/dt
         // use resistance for feed forward
         let mut target_voltage = target_field * self.motor.phase_resistance;
-        // use inductance for correction
-        let error = target_field - self.current_field;
-        self.integral += error * self.period;
-        // proportional correction
-        target_voltage += error * self.gains.proportional * self.motor.phase_inductance;
-        if target_voltage.length() > max_voltage {
-            target_voltage *= max_voltage / target_voltage.length();
-        }
-        // integral correction
-        target_voltage += self.integral * self.gains.integral * self.motor.phase_inductance;
-        if target_voltage.length() > max_voltage && self.gains.integral * self.motor.phase_inductance != 0. {
-            let clamped = target_voltage * max_voltage / target_voltage.length();
-            self.integral += (clamped - target_voltage) / (self.gains.integral * self.motor.phase_inductance);
-            target_voltage = clamped;
-        }
+//         // use inductance for correction
+//         let error = target_field - self.current_field;
+//         self.integral += error * self.period;
+//         // proportional correction
+//         target_voltage += error * self.gains.proportional * self.motor.phase_inductance;
+//         if target_voltage.length() > max_voltage {
+//             target_voltage *= max_voltage / target_voltage.length();
+//         }
+//         // integral correction
+//         target_voltage += self.integral * self.gains.integral * self.motor.phase_inductance;
+//         if target_voltage.length() > max_voltage && self.gains.integral * self.motor.phase_inductance != 0. {
+//             let clamped = target_voltage * max_voltage / target_voltage.length();
+//             self.integral += (clamped - target_voltage) / (self.gains.integral * self.motor.phase_inductance);
+//             target_voltage = clamped;
+//         }
         
         self.transform.rotor_to_phases(target_voltage)
     }
@@ -168,9 +162,9 @@ impl MultiTurnObserver {
 //         let expected = self.last_absolute + 0.5*self.last_velocity * self.period;
         let expected = self.last_absolute;
         let absolute = wrap_as(relative, expected, 1.);
-        let diff = absolute - self.last_absolute;
         // TODO try getting velocity AND acceleration with polynomial least squares regression over a rolling buffer
         // low-pass filter velocity
+        let diff = absolute - self.last_absolute;
         if diff.abs() < 0.1 {
             self.last_velocity = self.last_velocity*(1.-self.lowpass_rate) + diff / self.period * self.lowpass_rate;
         }
@@ -240,6 +234,7 @@ pub fn clamp_voltage(voltages: Vector<Float, PHASES>, saturation: (Float, Float)
     let sat_center = (saturation.1 + saturation.0) * 0.5;
     let range_center = (range.1 + range.0) * 0.5;
     (voltages + Vector::fill(sat_center - range_center)).clamp(saturation.0, saturation.1)
+//     (voltages + Vector::fill(sat_center)).clamp(saturation.0, saturation.1)
 }
 
 pub fn control_barrier(command: Float, _limited: Float, _limit: (Float, Float), _rate: Float) -> Float {
