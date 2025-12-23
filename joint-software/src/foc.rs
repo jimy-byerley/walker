@@ -237,8 +237,13 @@ pub fn clamp_voltage(voltages: Vector<Float, PHASES>, saturation: (Float, Float)
 //     (voltages + Vector::fill(sat_center)).clamp(saturation.0, saturation.1)
 }
 
-pub fn control_barrier(command: Float, _limited: Float, _limit: (Float, Float), _rate: Float) -> Float {
-    return command
+pub fn soft_command_limit(command: Float, limited: Float, limit: (Float, Float), soft: Float) -> Float {
+//     return command;
+    let range = soft * (limit.1 - limit.0);
+    if command > 0. {
+        command * ((limit.1 - limited) / range).clamp(0., 1.)
+    }
+    else {
+        command * ((limit.0 - limited) / range).clamp(0., 1.)
+    }
 }
-
-
