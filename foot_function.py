@@ -1,29 +1,30 @@
 from madcad import *
 from madcad.joints import *
 
+
 @cachefunc
 def foot(
 		# overall foot dimensions
-		fore_length = 50,
-		side_length = 45,
+		front_size,
+		side_size,
 		# structure dimensions
-		parallelogram_height = 20,   # distance between joints in the parallelogram
-		width = 8,  # parallelogram joints width
-		washer = 1,
-		play = 0.2,
-	
+		parallelogram_height,   # distance between joints in the parallelogram
 		# foot capabilities
 		front_angle = radians(50),
 		side_angle = radians(35),
+		# assembly settings
+		play = 0.2,
 		):
 
-	front_dist = 2/5*fore_length
-	back_dist = 3/5*fore_length
-	side_dist = 0.5*side_length
+	front_dist = 2/5*front_size
+	back_dist = 3/5*front_size
+	side_dist = 0.5*side_size
+	width = 0.4 * parallelogram_height
+	washer = stceil(width*0.1)
 	
 	# overall nail dimensions
-	nail_width = 30
-	nail_height = 35
+	nail_width = parallelogram_height * 1.5
+	nail_height = parallelogram_height * 1.6
 	# hole sizes
 	foot_hole_big = 6
 	foot_hole_small = 4
@@ -52,10 +53,10 @@ def foot(
 	
 		Revolute(('side0', 'frontedge0'), front_bot := Axis(vec3(front_dist, 0, 0), X)),
 		Revolute(('side0', 'frontedge1'), front_top := Axis(vec3(front_dist, 0, parallelogram_height), X)),
-		Revolute(('frontedge0', 'nail0'), leftnail_bot := Axis(vec3(front_dist, 0.5*side_length, 0), X)),
-		Revolute(('frontedge1', 'nail0'), leftnail_top := Axis(vec3(front_dist, 0.5*side_length, parallelogram_height), X)),
-		Revolute(('frontedge0', 'nail1'), rightnail_bot := Axis(vec3(front_dist, -0.5*side_length, 0), X)),
-		Revolute(('frontedge1', 'nail1'), rightnail_top := Axis(vec3(front_dist, -0.5*side_length, parallelogram_height), X)),
+		Revolute(('frontedge0', 'nail0'), leftnail_bot := Axis(vec3(front_dist, 0.5*side_size, 0), X)),
+		Revolute(('frontedge1', 'nail0'), leftnail_top := Axis(vec3(front_dist, 0.5*side_size, parallelogram_height), X)),
+		Revolute(('frontedge0', 'nail1'), rightnail_bot := Axis(vec3(front_dist, -0.5*side_size, 0), X)),
+		Revolute(('frontedge1', 'nail1'), rightnail_top := Axis(vec3(front_dist, -0.5*side_size, parallelogram_height), X)),
 	
 	#	PointSlider(('side1', 'ground'), Axis(-3*X-2*Z, Z)),
 	#	PointSlider(('nail0', 'ground'), Axis(2*X+2*Y-2*Z, Z)),
@@ -166,21 +167,21 @@ def foot(
 		])).mergegroups()
 	edge0 = difference(intersection(
 			intersection(
-				extrusion(edgeside, fore_length*3*X, alignment=0.5).orient(),
+				extrusion(edgeside, front_size*3*X, alignment=0.5).orient(),
 				extrusion(edge0_profile, 4*width*Y, alignment=0.5).orient(),
 				),
-			extrusion(edgetop, fore_length*3*Z).orient(),
+			extrusion(edgetop, front_size*3*Z).orient(),
 			),
-		brick(center=O, width=(width+2*(washer+play))*Y + 4*fore_length*(X+Z)),
+		brick(center=O, width=(width+2*(washer+play))*Y + 4*front_size*(X+Z)),
 		)
 	edge1 = difference(intersection(
 			intersection(
-				extrusion(edgeside, fore_length*3*X, alignment=0.5).orient(),
+				extrusion(edgeside, front_size*3*X, alignment=0.5).orient(),
 				extrusion(edge1_profile, 4*width*Y, alignment=0.5).orient(),
 				),
-			extrusion(edgetop, fore_length*3*Z).orient(),
+			extrusion(edgetop, front_size*3*Z).orient(),
 			),
-		brick(center=O, width=(width+2*(washer+play))*Y + 4*fore_length*(X+Z)),
+		brick(center=O, width=(width+2*(washer+play))*Y + 4*front_size*(X+Z)),
 		)
 	
 	side0 = convexhull(
@@ -384,6 +385,9 @@ def foot(
 		kinematic = kin,
 		axis = Axis(-nail_height*Z, Z),
 		)
-		
 
-foot1 = foot(50, 45)
+
+if __name__ == '__madcad__':		
+	settings.resolution = ('sqradm', 0.8)
+
+	foot1 = foot(50, 45, 20)
