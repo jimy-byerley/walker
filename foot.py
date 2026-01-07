@@ -1,5 +1,6 @@
 from madcad import *
 from madcad.joints import *
+from madcad.scheme import *
 
 
 @cachefunc
@@ -26,11 +27,11 @@ def foot(
 	nail_width = parallelogram_height * 1.5
 	nail_height = parallelogram_height * 1.6
 	# hole sizes
-	foot_hole_big = stceil(parallelogram_height*0.25, precision=0.2)
-	foot_hole_small = stceil(parallelogram_height*0.18, precision=0.2)
-	nail_hole_big = stceil(parallelogram_height*0.15, precision=0.5)
-	nail_hole_small = stceil(parallelogram_height*0.1, precision=0.5)
-	front_hole = stceil(mix(nail_hole_big, nail_hole_small, 0.5), precision=0.5)
+	foot_hole_big = stfloor(parallelogram_height*0.3, precision=0.2)
+	foot_hole_small = stfloor(parallelogram_height*0.2, precision=0.2)
+	nail_hole_big = stfloor(parallelogram_height*0.15, precision=0.2)
+	nail_hole_small = stfloor(parallelogram_height*0.12, precision=0.2)
+	front_hole = stfloor(mix(nail_hole_big, nail_hole_small, 0.5), precision=0.2)
 	
 	legdir = normalize(3*Z-X)
 	
@@ -216,7 +217,7 @@ def foot(
 		]))
 	fronttraverse0 = intersection(
 			extrusion(fronttraverse0_profile.transform(0.5*width*X), 
-				2*width*X, 
+				4*width*X, 
 				alignment=0.1).orient(),
 			frontedge_top_profile,
 			)
@@ -227,7 +228,7 @@ def foot(
 		]))
 	fronttraverse1 = intersection(
 			extrusion(fronttraverse1_profile.transform(0.5*width*X), 
-				2*width*X, 
+				2*width*X + 2*front_hole*X, 
 				alignment=0.1).orient(),
 			frontedge_top_profile.transform(parallelogram_height*Z),
 			)
@@ -252,8 +253,9 @@ def foot(
 	OZ = Axis(O,Z)
 	def nail_mount(r):
 		d = 2*r
+		l = stceil(2*(width+washer+r))
 		return Solid(
-			screw = standard.screw(d, stceil(2*(width+washer+r)))
+			screw = standard.screw(d, l)
 					.transform((width+washer+play)*Z),
 			washera = standard.washer(d)
 					.transform((0.5*width)*Z),
@@ -261,6 +263,7 @@ def foot(
 					.transform(-(0.5*width+washer)*Z),
 			nut = standard.nut(d)
 					.transform(-(width+washer+r)*Z),
+			annotations = note_leading((width+washer+play+r)*Z, offset=d*(Z+X), text="M{:g}x{:g}".format(d, l)),
 			)
 	nail_mount_small = nail_mount(nail_hole_small)
 	nail_mount_big = nail_mount(nail_hole_big)
@@ -303,8 +306,9 @@ def foot(
 		])
 	def frontnail_mount(r, a, b, c):
 		d = 2*r
+		l = stceil(a+b+c+2*washer+2*r)
 		return Solid(
-			screw = standard.screw(d, stceil(a+b+c+2*washer+2*r), head='button')
+			screw = standard.screw(d, l, head='button')
 					.transform((b+a+2*washer+2*play)*Z),
 			washera = standard.washer(d)
 					.transform((b+a+washer+2*play)*Z),
@@ -312,6 +316,7 @@ def foot(
 					.transform((b)*Z),
 			nut = standard.nut(d)
 					.transform((-c-r)*Z),
+			annotations = note_leading((b+a+2*washer+2*play+r)*Z, offset=d*(Z+X), text="M{:g}x{:g}".format(d, l)),
 			)
 	frontnail_mount_small = frontnail_mount(nail_hole_small, width, width/2, width/2)
 	frontnail_mount_big = frontnail_mount(front_hole, width, 2.2*nail_hole_big, 2.2*nail_hole_big-2.5*front_hole)
@@ -328,11 +333,11 @@ def foot(
 		frontnail_mount_small.place((Revolute, OZ, leftnail_top)),
 		frontnail_mount_small.place((Revolute, OZ, rightnail_top)),
 		]
-	side0 = [
-		difference(side0, inflate(holes, play) + front_holes),
-		frontnail_mount_big.place((Revolute, OZ, front_top)),
-		frontnail_mount_big.place((Revolute, OZ, front_bot)),
-		]
+	side0 = Solid(
+		body = difference(side0, inflate(holes, play) + front_holes),
+		bolt_top = frontnail_mount_big.place((Revolute, OZ, front_top)),
+		bolt_bot = frontnail_mount_big.place((Revolute, OZ, front_bot)),
+		)
 	
 	thickness = 1.5
 	foot = [
@@ -365,4 +370,8 @@ if __name__ == '__madcad__':
 	settings.resolution = ('sqradm', 0.8)
 
 #	foot1 = foot(50, 45, 20)
-	foot2 = foot(50*2, 45*2, 20*2)
+#	foot2 = foot(50*2, 45*2, 20*2)
+	foot2 = foot(120, 110, 50)
+
+
+# TODO try non parallel (evasive) nails to reduce bulkiness and improve stability

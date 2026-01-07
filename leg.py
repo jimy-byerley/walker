@@ -46,10 +46,9 @@ def assemble(refs):
 		'edge-2': Solid(),
 		}
 
-	gearbox = strainwave(50, 60)
+	gearbox = strainwave(50, 60, nscrews=8)
 	content['backleg'].gearbox = gearbox.place((Revolute, gearbox.output.perimeter.axis, Axis(refs.backknee + refs.knee_radius*Z, -Y)))
-#	content['backleg'].passive1 = passive_joint(50, dscrew=5, nscrew=8)
-#	content['backleg'].body = backleg()
+
 	passive = passive_joint(30, dscrew=5, nscrew=4)
 	content['backleg'].passive1 = passive.transform(
 		placement((Revolute, passive.inner.perimeter.axis, Axis(refs.backknee + refs.knees[1], -Y)))
@@ -70,18 +69,38 @@ def assemble(refs):
 	passive_big = passive_joint(50, dscrew=5, nscrew=8)
 	content['foreleg'].passive0 = passive_big.place((Revolute, passive_big.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[0], Y)))
 	
-	gearbox = strainwave(50, 60)
 	content['shoulder'].gearbox = gearbox.place((Revolute, gearbox.output.perimeter.axis, Axis(refs.shoulder, Y)))
+	content['backleg'].body = convexoutline(web([
+		Circle(Axis(refs.shoulder, Y), gearbox.shell.output.perimeter.radius + gearbox.shell.output.diameters[0]),
+		Circle(Axis(refs.backknee + refs.knees[0], Y), gearbox.shell.output.perimeter.radius + gearbox.shell.output.diameters[0]),
+		Circle(Axis(refs.backknee + refs.knees[1], Y), passive.outer.perimeter.radius + gearbox.shell.output.diameters[0]),
+		Circle(Axis(refs.backknee + refs.knees[2], Y), passive.outer.perimeter.radius + gearbox.shell.output.diameters[0]),
+		]))
+
 	content['edge-0'].body = traverse_main(refs.backknee + refs.knees[0], refs.foreknee + refs.knees[0], gearbox)
 	content['edge-1'] = traverse_secondary(refs.backknee + refs.knees[1], refs.foreknee + refs.knees[1])
 	content['edge-2'] = traverse_secondary(refs.backknee + refs.knees[2], refs.foreknee + refs.knees[2])
 	
+	content['foreleg'].body = convexoutline(web([
+		Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.55), Y), 30),
+		Circle(Axis(refs.foreknee + refs.knees[0], Y), gearbox.shell.output.perimeter.radius + gearbox.shell.output.diameters[0]),
+		Circle(Axis(refs.foreknee + refs.knees[1], Y), passive.outer.perimeter.radius + gearbox.shell.output.diameters[0]),
+		Circle(Axis(refs.foreknee + refs.knees[2], Y), passive.outer.perimeter.radius + gearbox.shell.output.diameters[0]),
+		]))
+
 #	l = foreleg(refs, passive_big, passive)
 #	content['foreleg'].some = foreleg(refs, content['foreleg'].passive0, content['foreleg'].passive1)
 
-	foot1 = foot(front_size=50*2, side_size=45*2, parallelogram_height=20*2)
+	size = refs.leg_length*0.3
+	foot1 = foot(
+		front_size = stceil(size), 
+		side_size = stceil(size*0.9),
+		parallelogram_height = stceil(size*0.4),
+		)
 	content['foreleg'].foot = foot1.transform(placement((Revolute, Axis(O,Z), Axis(refs.foot_center, Z))) * rotate(pi, Z))
 	
+
+
 	return Kinematic(joints, ground='chest', content=content)
 
 def backleg(refs):
@@ -99,21 +118,25 @@ def backleg(refs):
 bone_curving = -1.2
 color_traverse = vec3(0.8, 0.4, 0.1)*0.5
 
-def traverse_main(start, stop, gearbox):
-	play = 0.1
-	screw_height = 5
-	rext = gearbox.output.perimeter.radius + 1.5*gearbox.output.diameters[0]
-	rint = gearbox.output.perimeter.radius - 2*gearbox.output.diameters[0]
-	bone = extrans(
-		flatsurface(wire(Circle(Axis(O, Y), rext))).flip(),
-		[translate(start)]
+def traverse_bone(start, stop, screw_height, rext):
+	return extrans(
+#		flatsurface(wire(Circle(Axis(O, Y), rext))).flip(),
+		flatsurface(wire(Ellipsis(O, Z*rext, X*rext + screw_height*Y))).flip(),
+		[translate(start) * mat4(scaledir(Y, 0))]
 		+ [translate(mix(
 			start + screw_height*Y,
 			stop - screw_height*Y,
 			x)) * scale(vec3(1 + x*(1-x) * bone_curving))
 			for x in linrange(0, 1, div=20)]
-		+ [translate(stop)],
+		+ [translate(stop) * mat4(scaledir(Y, 0))],
 		)
+
+def traverse_main(start, stop, gearbox):
+	play = 0.1
+	screw_height = 5
+	rext = gearbox.output.perimeter.radius + 1.5*gearbox.output.diameters[0]
+	rint = gearbox.output.perimeter.radius - 2*gearbox.output.diameters[0]
+	bone = traverse_bone(start, stop, screw_height, rext)
 	passthrough = (
 		cylinder(start - play*Y, start + project(stop-start, Y), rint).flip()
 		+ cylinder(stop + play*Y, stop + project(start-stop, Y), rint).flip()
@@ -138,7 +161,8 @@ def traverse_main(start, stop, gearbox):
 			)
 	holes = Mesh()
 	rhole = distance(start, stop) * 0.06
-	for x in linrange(0.3, 0.7, div=1):
+	rx = 1.5 * gearbox.output.perimeter.radius / distance(start, stop)
+	for x in linrange(0.1+rx, 0.9-rx, div=1):
 		p = mix(start, stop, x)
 		holes += cylinder(p - 2*rhole*Y, p + 2*rhole*Y, rhole).flip()
 #	screwing, bolts = circular_screwing(
@@ -152,18 +176,8 @@ def traverse_main(start, stop, gearbox):
 def traverse_secondary(start, stop):
 	screw_height = 5
 	r = 20
-	e = extrans(
-		Circle(Axis(O, Y), r),
-		[translate(start)]
-		+ [translate(mix(
-			start + screw_height*Y,
-			stop - screw_height*Y,
-			x)) * scale(vec3(1 + x*(1-x) * bone_curving))
-			for x in linrange(0, 1, div=20)]
-		+ [translate(stop)],
-		)
-#	f = intersection(e, mesh.mesh([cylinder(mix(refs.backknee
-	return e .option(color=color_traverse)
+	bone = traverse_bone(start, stop, screw_height, r)
+	return bone .option(color=color_traverse)
 
 def foreleg(refs, main, secondary):
 	side = refs.foreknee +main.inner.height*Y +main.outer.height*Y
@@ -199,12 +213,26 @@ def foreleg(refs, main, secondary):
 		])
 	b = convexoutline
 	
+#refs = references(
+#	leg_length = 400,
+#	traverse_length = 200,
+#	offset_shoulder = 40,
+#	offset_traverse = 90,
+#	foot_clearance = 50,
+#	knee_radius = 50,
+#	)
 refs = references(
-	leg_length = 400,
-	traverse_length = 200,
+	leg_length = 300,
+	traverse_length = 180,
 	offset_shoulder = 40,
-	offset_traverse = 100,
+	offset_traverse = 90,
 	foot_clearance = 50,
 	knee_radius = 50,
 	)
 assembly = assemble(refs)
+
+
+# notes:
+# - shoulder actuator should be stronger than backleg on front legs 
+# - shoulder actuator should be weaker than backleg on rear legs
+# - small traverses should not have bearings to redice bulkiness

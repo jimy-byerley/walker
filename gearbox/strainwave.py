@@ -88,7 +88,7 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 		d = enlarge*stfloor(0.8**i * dscrew)
 		diameters_list.append(d)
 		holes += cylinder(a-gap, b+gap, d/2) .transform(rotatearound(i*1.4*dscrew/radius, axis))
-	holes = repeataround(holes, 8, axis).flip()
+	holes = repeataround(holes, div, axis).flip()
 	screwing = Solid(
 		interface = Solid(
 			perimeter = Circle(axis, radius),
@@ -245,6 +245,7 @@ def dual_crown_housing_guided(
 		rext:float, 
 		crown_in:Mesh, crown_out:Mesh, 
 		dscrew_out:float=4, dscrew_in:float=None, 
+		nscrews=8,
 		gap=0.2, shell_thickness=None, hole=None,
 		out_clearance=0, in_clearance=0, 
 		details=True):
@@ -297,21 +298,27 @@ def dual_crown_housing_guided(
 		rext, 
 		height = bearing_height*1.7, 
 		dscrew = dscrew_out, 
-		diameters = 2, 
-		hold = bearing_height*0.8*details)
+		diameters = 1, 
+		hold = bearing_height*0.8*details,
+		div = nscrews,
+		)
 	output.int= circular_screwing(
 		axis.transform(bearing_center*Z - bearing_height*0.7*Z - dscrew_out*Z), 
 		radius = stfloor(bearing_rint - 1.2*dscrew_in), 
 		height = bearing_height*1.7, 
 		dscrew = dscrew_out, 
-		diameters = 2, 
-		hold = 1.3*dscrew_out*details)
+		diameters = 1, 
+		hold = 1.3*dscrew_out*details,
+		div = nscrews,
+		)
 	input.ext = circular_screwing(
 		Axis(input.center,Z), 
 		radius = stceil(hole + 1.2*dscrew_in),
 		height = shell_thickness,
 		dscrew = dscrew_in,  
-		diameters = 2)
+		diameters = 1,
+		div = nscrews,
+		)
 	
 	# put stops on teeth extremities
 	crown_in = union(
@@ -454,7 +461,7 @@ def dual_crown_housing_guided(
 			)),
 		)
 
-def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:float=4, gap=0.2):
+def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:float=4, nscrews=8, gap=0.2):
 	''' housing for a guide-free gearbox (no bearing, no sealing) just the gearing '''
 	interface = Solid(dscrew = dscrew)
 	interface.perimeter = Circle(Axis(interface.dscrew*Z,Z), rext)
@@ -468,7 +475,9 @@ def dual_crown_housing_free(rext:float, crown_in:Mesh, crown_out:Mesh, dscrew:fl
 		interface.perimeter.radius, 
 		zmax, 
 		interface.dscrew, 
-		diameters=3)
+		diameters=3,
+		div=nscrews,
+		)
 	
 	crown_body = revolution(wire([
 		mix(rmin, rmax, -0.1)*X + 0.5*(rmax-rmin)*Z + gap*Z,
@@ -533,15 +542,15 @@ def balls_guide_profile(rballs, rball, start, stop):
 
 
 @cachefunc
-def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.5, ball_play = 0.1, axial_play = 0.3, rball = 3, dscrew = None, guided=True, details=False):
+def strainwave_dual_crown(rext, nteeth, height=None, nscrews=8, thickness = 0.5, ball_play = 0.1, axial_play = 0.3, rball = 3, dscrew = None, guided=True, details=False):
 	if height is None:
 		height = stceil(0.2*rext) # special case for cage height
 		cage_height = rball*2.2
 		if height/2 < cage_height:
 			height = stceil(height/2 + cage_height)
 	if dscrew is None:
-		dscrew_out = stceil(rext*0.1)
-		dscrew_in = stceil(rext*0.08)
+		dscrew_out = stceil(rext*0.8/nscrews, 0.2)
+		dscrew_in = stceil(rext*0.6/nscrews, 0.2)
 
 	if guided:
 		meshing = dual_crown_meshing(
@@ -554,6 +563,7 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.5, ball_play 
 			extrusion(meshing.teeth.crown_out, -height*Z), 
 			dscrew_out=dscrew_out, 
 			dscrew_in=dscrew_in,
+			nscrews=nscrews,
 			out_clearance = axial_play,
 			hole = hole,
 			gap = 1.5,
@@ -570,6 +580,7 @@ def strainwave_dual_crown(rext, nteeth, height=None, thickness = 0.5, ball_play 
 			extrusion(meshing.teeth.crown_in, -height*Z), 
 			extrusion(meshing.teeth.crown_out, height*Z).flip(), 
 			dscrew_out,
+			nscrews=nscrews,
 			gap = 0.2,
 			details = details,
 			)
@@ -665,12 +676,20 @@ strainwave = strainwave_dual_crown
 
 if __name__ == '__madcad__':
 #	settings.resolution = ('sqradm', 0.2)
-	settings.resolution = ('sqradm', 0.3)
-#	settings.resolution = ('sqradm', 0.8)
+#	settings.resolution = ('sqradm', 0.3)
+	settings.resolution = ('sqradm', 0.8)
 	
+#	gearbox = strainwave_dual_crown(
+#		rext = 50,
+#		nteeth = 60,
+#		guided = True,
+#		details = True,
+#		)
+
 	gearbox = strainwave_dual_crown(
-		rext = 50,
+		rext = 70,
 		nteeth = 60,
+		nscrews = 12,
 		guided = True,
 		details = True,
 		)
