@@ -3,6 +3,27 @@ from madcad.joints import *
 from madcad.scheme import *
 
 
+
+orange = vec3(0.8, 0.4, 0.1)*0.5
+
+def centercylinder(axis, radius, height):
+	return cylinder(
+		axis.origin - axis.direction*0.5*height, 
+		axis.origin + axis.direction*0.5*height,
+		radius)
+def centerslot(axis, radius, height):
+	return bolt_slot(
+		axis.origin - axis.direction*0.5*height, 
+		axis.origin + axis.direction*0.5*height,
+		dscrew = 2*radius,
+		rslot = 2.2*radius).flip()
+def centerbolt(axis, radius, height):
+	return bolt(
+		axis.origin - axis.direction*0.5*height, 
+		axis.origin + axis.direction*0.5*height,
+		radius)
+
+
 @cachefunc
 def foot(
 		# overall foot dimensions
@@ -34,223 +55,33 @@ def foot(
 	front_hole = stfloor(mix(nail_hole_big, nail_hole_small, 0.5), precision=0.2)
 	
 	legdir = normalize(3*Z-X)
-	
-	orange = vec3(0.8, 0.4, 0.1)*0.5
-	
-	leg_bot = Axis(30*Z+80*legdir, Y)
-	leg_top = Axis(30*Z+120*legdir, Y)
-	joints = [
-#		Revolute(('leg', 'foreedge'), leg_bot := Axis(30*Z+80*legdir, Y)),
-#		Revolute(('leg', 'backedge'), leg_top := Axis(30*Z+120*legdir, Y)),
-	
-		Revolute(('leg', 'traverse0'), foot_bot := Axis(0.5*parallelogram_height*Z, Y)),
-		Revolute(('leg', 'traverse1'), foot_top := Axis(1.5*parallelogram_height*Z, Y)),
-		Revolute(('traverse0', 'side0'), frontedge_bot := Axis(0.5*parallelogram_height*Z+front_dist*X, Y)),
-		Revolute(('traverse1', 'side0'), frontedge_top := Axis(1.5*parallelogram_height*Z+front_dist*X, Y)),
-		Revolute(('traverse0', 'side1'), backnail_bot := Axis(0.5*parallelogram_height*Z-back_dist*X, Y)),
-		Revolute(('traverse1', 'side1'), backnail_top := Axis(1.5*parallelogram_height*Z-back_dist*X, Y)),
-	
-		Revolute(('side0', 'fronttraverse0'), front_bot := Axis(vec3(front_dist, 0, 0), X)),
-		Revolute(('side0', 'fronttraverse1'), front_top := Axis(vec3(front_dist, 0, parallelogram_height), X)),
-		Revolute(('fronttraverse0', 'nail0'), leftnail_bot := Axis(vec3(front_dist, 0.5*side_size, 0), X)),
-		Revolute(('fronttraverse1', 'nail0'), leftnail_top := Axis(vec3(front_dist, 0.5*side_size, parallelogram_height), X)),
-		Revolute(('fronttraverse0', 'nail1'), rightnail_bot := Axis(vec3(front_dist, -0.5*side_size, 0), X)),
-		Revolute(('fronttraverse1', 'nail1'), rightnail_top := Axis(vec3(front_dist, -0.5*side_size, parallelogram_height), X)),
-	
-	#	PointSlider(('side1', 'ground'), Axis(-3*X-2*Z, Z)),
-	#	PointSlider(('nail0', 'ground'), Axis(2*X+2*Y-2*Z, Z)),
-	#	PointSlider(('nail1', 'ground'), Axis(2*X-2*Y-2*Z, Z)),
-	
-	#	Ball(('side1', 'ground'), -3*X-2*Z),
-	#	Ball(('nail0', 'ground'), 2*X+2*Y-2*Z),
-	#	Ball(('nail1', 'ground'), 2*X-2*Y-2*Z),
-		]
-	
-	tiphigh = revolution(Softened([
-		vec3(0, 0., -nail_height),
-		vec3(-0.25*nail_width, 0., -nail_height),
-		vec3(-0.5*nail_width, 0., -nail_height*0.5),
-		vec3(-0.5*nail_width, 0., -nail_height*0.3),
-		vec3(-0.3*nail_width, 0., 1.9*parallelogram_height),
-		vec3(0, 0., 1.9*parallelogram_height),
-		])).flip()
-	tiplow = revolution(Softened([
-		vec3(0, 0., -nail_height),
-		vec3(-0.25*nail_width, 0., -nail_height),
-		vec3(-0.5*nail_width, 0., -nail_height*0.5),
-		vec3(-0.5*nail_width, 0., -nail_height*0.3),
-		vec3(-0.25*nail_width, 0., 1.35*parallelogram_height),
-		vec3(0, 0., 1.35*parallelogram_height),
-		])).flip()
-	
-	leg_attach = convexoutline(web([
-		Circle(foot_top.transform(front_size*Z), 2*foot_hole_big),
-		Circle(foot_top, 2*foot_hole_big),
-		Circle(foot_bot, 2*foot_hole_small),
-		]))
-	
-	backnail_attach_profile = convexoutline(web([
-		Circle(backnail_top, 2.4*nail_hole_big),
-		Circle(backnail_bot, 2.4*nail_hole_small),
-		Circle(
-			foot_bot.transform(rotatearound(front_angle, backnail_bot)), 
-			2.3*foot_hole_small),
-		])).orient().finish()
-
-	backnail = difference(tiphigh.transform(project(backnail_bot.origin, X)),
-		extrusion(
-			flatsurface(backnail_attach_profile).transform(0.5*width*Y).flip(), 
-			nail_width*Y).orient()
-		+ extrusion(
-			flatsurface(backnail_attach_profile).transform(-0.5*width*Y), 
-			-nail_width*Y).orient()
-		)
-	backnail_interference_profile = leg_attach.transform(rotatearound(front_angle, backnail_top) * foot_top.origin - foot_top.origin)
-	play = foot_hole_big*0.1
-	backnail = difference(backnail, inflate(extrusion(backnail_interference_profile, nail_width*Y, alignment=0.5).orient(), play))
-	
-	
-	frontnail_attach_profile = convexoutline(web([
-		Circle(leftnail_top, 2.6*nail_hole_small),
-		Circle(leftnail_bot, 2.4*nail_hole_small),
-		Circle(front_top.transform(rotatearound(side_angle, leftnail_top)), 1.6*front_hole),
-		Circle(front_bot.transform(rotatearound(side_angle, leftnail_bot)), 1.6*front_hole),
-		]))
-	frontnail = difference(tiplow.transform(leftnail_bot.origin*vec3(1,1,0)),
-		extrusion(
-			flatsurface(frontnail_attach_profile).transform(0.5*width*X).flip(), 
-			2*width*X).orient()
-		+ extrusion(
-			flatsurface(frontnail_attach_profile).transform(-0.5*width*X), 
-			-2*width*X).orient()
-		)
-	frontnail_interference_profile = convexoutline(web([
-		Circle(front_top.transform(rotatearound(-side_angle, leftnail_top)), 1.7*width),
-		Circle(front_bot.transform(rotatearound(side_angle, leftnail_bot)).transform(0.5*parallelogram_height*Z), 1.7*width),
-		Circle(front_bot.transform(rotatearound(side_angle, leftnail_bot)), 2*front_hole),
-		]))
-	frontnail = difference(frontnail, extrusion(frontnail_interference_profile, 2*nail_width*X, alignment=0.5).orient())
-	
-	traverse0_profile = convexoutline(web([
-		Circle(foot_bot.transform(-0.1*parallelogram_height*Z), 1.8*foot_hole_small) .mesh().transform(scaledir(X,1.5)),
-		Circle(backnail_bot, 2*nail_hole_small),
-		Circle(Axis(0.5*parallelogram_height*Z+front_dist*X,Y), 2*nail_hole_small),
-		]))
-	traverse0 = mesh.mesh([
-		extrusion(flatsurface(traverse0_profile).transform(+(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=0).orient(),
-		extrusion(flatsurface(traverse0_profile).transform(-(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=1).orient(),
-		])
-	traverse1_profile = convexoutline(web([
-		Circle(foot_top.transform(0.1*parallelogram_height*Z), 1.8*foot_hole_big) .mesh().transform(scaledir(X,1.5)),
-		Circle(backnail_top, 2*nail_hole_big),
-		Circle(Axis(1.5*parallelogram_height*Z+front_dist*X,Y), 2*nail_hole_big),
-		]))
-	traverse1 = mesh.mesh([
-		extrusion(flatsurface(traverse1_profile).transform((0.5*width+washer+play)*Y), 0.5*width*Y, alignment=0).orient(),
-		extrusion(flatsurface(traverse1_profile).transform(-(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=1).orient(),
-		])
-	
-	# BUG: convexoutline returns overlapping edges
-	edgeside = convexoutline(web([
-		Circle(Axis(foot_top.origin + width*Z, X), width),
-		Circle(Axis(foot_top.origin - foot_hole_big*Z, X), 1.8*width),
-		Circle(Axis(foot_bot.origin + foot_hole_small*Z, X), 1.8*width),
-		Circle(Axis(foot_bot.origin - width*Z, X), width),
-		])).mergegroups()
-	edgetop = convexoutline(web([
-		Circle(Axis(O,Z), 1.8*width).mesh() .transform(scaledir(X, 2)),
-		Circle(Axis(backnail_bot.origin*(1.1*X+Y), Z), 1.2*width),
-		Circle(Axis(frontedge_bot.origin*(1.1*X+Y), Z), 1.2*width),
-		])).mergegroups()
-	traverse0 = difference(
-		intersection(
-			intersection(
-				extrusion(edgeside, front_size*3*X, alignment=0.5).orient(),
-				extrusion(traverse0_profile, 4*width*Y, alignment=0.5).orient(),
-				),
-			extrusion(edgetop, front_size*3*Z).orient(),
-			),
-		brick(center=O, width=(width+2*(washer+play))*Y + 4*front_size*(X+Z)),
-		)
-	traverse1 = difference(intersection(
-			intersection(
-				extrusion(edgeside, front_size*3*X, alignment=0.5).orient(),
-				extrusion(traverse1_profile, 4*width*Y, alignment=0.5).orient(),
-				),
-			extrusion(edgetop, front_size*3*Z).orient(),
-			),
-		brick(center=O, width=(width+2*(washer+play))*Y + 4*front_size*(X+Z)),
-		)
-	
-	side0 = convexhull(
-		cylinder(
-			+0.5*width*Y + 1.5*parallelogram_height*Z + front_dist*X,
-			-0.5*width*Y + 1.5*parallelogram_height*Z + front_dist*X,
-			2.2*nail_hole_big)
-		+ cylinder(
-			+2.2*nail_hole_big*X + front_dist*X,
-			-2.2*nail_hole_big*X + front_dist*X,
-			0.5*width)
-		)
-	
-	#bolt(-back_dist*X - 1.5*width*Y + 0.5*parallelogram_height, 
-	
-	frontedge_top_profile = revolution(web([
-		wire([
-			leftnail_bot.origin + 3*nail_hole_small*Y + 0.5*width*X + (washer+play)*X,
-			leftnail_bot.origin - 1.5*nail_hole_small*Y + 0.5*width*X + (washer+play)*X,
-			front_bot.origin + (washer+play)*X + 2*width*Y + 2.2*nail_hole_big*X,
-			front_bot.origin + (washer+play)*X + 2.2*nail_hole_big*X,
-			]).segmented(),
-		wire([
-			front_bot.origin + 2.2*nail_hole_big*X + width*X + washer*X + front_hole*X,
-			front_bot.origin + 2.2*nail_hole_big*X + width*X + washer*X + front_hole*X + 2.5*front_hole*Y,
-			leftnail_bot.origin + 1.5*width*X + 3*nail_hole_small*Y,
-			]),
-		]).segmented(), Axis(O,X))
-	frontedge_top_profile.mergeclose()
-	
-	fronttraverse0_profile = convexoutline(web([
-		Circle(Axis(front_dist*X, X), 1*width),
-		Circle(Axis(front_dist*X + side_dist*Y, X), 2.2*nail_hole_small),
-		Circle(Axis(front_dist*X - side_dist*Y, X), 2.2*nail_hole_small),
-		]))
-	fronttraverse0 = intersection(
-			extrusion(fronttraverse0_profile.transform(0.5*width*X), 
-				4*width*X, 
-				alignment=0.1).orient(),
-			frontedge_top_profile,
-			)
-	fronttraverse1_profile = convexoutline(web([
-		Circle(Axis(parallelogram_height*Z + front_dist*X, X), 1.2*width),
-		Circle(Axis(parallelogram_height*Z + front_dist*X + side_dist*Y, X), 2.2*nail_hole_small),
-		Circle(Axis(parallelogram_height*Z + front_dist*X - side_dist*Y, X), 2.2*nail_hole_small),
-		]))
-	fronttraverse1 = intersection(
-			extrusion(fronttraverse1_profile.transform(0.5*width*X), 
-				2*width*X + 2*front_hole*X, 
-				alignment=0.1).orient(),
-			frontedge_top_profile.transform(parallelogram_height*Z),
-			)
-	
-	def centercylinder(axis, radius, height):
-		return cylinder(
-			axis.origin - axis.direction*0.5*height, 
-			axis.origin + axis.direction*0.5*height,
-			radius)
-	def centerslot(axis, radius, height):
-		return bolt_slot(
-			axis.origin - axis.direction*0.5*height, 
-			axis.origin + axis.direction*0.5*height,
-			dscrew = 2*radius,
-			rslot = 2.2*radius).flip()
-	def centerbolt(axis, radius, height):
-		return bolt(
-			axis.origin - axis.direction*0.5*height, 
-			axis.origin + axis.direction*0.5*height,
-			radius)
-	
 	OZ = Axis(O,Z)
+	
+	
+	joints = [
+		Revolute(('leg', 'traverse_front_bot'), foot_bot := Axis(0.5*parallelogram_height*Z, Y)),
+		Revolute(('leg', 'traverse_front_top'), foot_top := Axis(1.5*parallelogram_height*Z, Y)),
+		Revolute(('traverse_front_bot', 'front_dispatcher'), frontedge_bot := Axis(0.5*parallelogram_height*Z+front_dist*X, Y)),
+		Revolute(('traverse_front_top', 'front_dispatcher'), frontedge_top := Axis(1.5*parallelogram_height*Z+front_dist*X, Y)),
+		Revolute(('traverse_front_bot', 'backnail'), backnail_bot := Axis(0.5*parallelogram_height*Z-back_dist*X, Y)),
+		Revolute(('traverse_front_top', 'backnail'), backnail_top := Axis(1.5*parallelogram_height*Z-back_dist*X, Y)),
+	
+		Revolute(('front_dispatcher', 'traverse_main_bot'), front_bot := Axis(vec3(front_dist, 0, 0), X)),
+		Revolute(('front_dispatcher', 'traverse_main_top'), front_top := Axis(vec3(front_dist, 0, parallelogram_height), X)),
+		Revolute(('traverse_main_bot', 'nail_front_right'), leftnail_bot := Axis(vec3(front_dist, 0.5*side_size, 0), X)),
+		Revolute(('traverse_main_top', 'nail_front_right'), leftnail_top := Axis(vec3(front_dist, 0.5*side_size, parallelogram_height), X)),
+		Revolute(('traverse_main_bot', 'nail_front_left'), rightnail_bot := Axis(vec3(front_dist, -0.5*side_size, 0), X)),
+		Revolute(('traverse_main_top', 'nail_front_left'), rightnail_top := Axis(vec3(front_dist, -0.5*side_size, parallelogram_height), X)),
+	
+	#	PointSlider(('backnail', 'ground'), Axis(-3*X-2*Z, Z)),
+	#	PointSlider(('nail_front_right', 'ground'), Axis(2*X+2*Y-2*Z, Z)),
+	#	PointSlider(('nail_front_left', 'ground'), Axis(2*X-2*Y-2*Z, Z)),
+	
+	#	Ball(('backnail', 'ground'), -3*X-2*Z),
+	#	Ball(('nail_front_right', 'ground'), 2*X+2*Y-2*Z),
+	#	Ball(('nail_front_left', 'ground'), 2*X-2*Y-2*Z),
+		]
+
 	def nail_mount(r):
 		d = 2*r
 		l = stceil(2*(width+washer+r))
@@ -265,8 +96,21 @@ def foot(
 					.transform(-(width+washer+r)*Z),
 			annotations = note_leading((width+washer+play+r)*Z, offset=d*(Z+X), text="M{:g}x{:g}".format(d, l)),
 			)
-	nail_mount_small = nail_mount(nail_hole_small)
-	nail_mount_big = nail_mount(nail_hole_big)
+	
+	def frontnail_mount(r, a, b, c):
+		d = 2*r
+		l = stceil(a+b+c+2*washer+2*r)
+		return Solid(
+			screw = standard.screw(d, l, head='button')
+					.transform((b+a+2*washer+2*play)*Z),
+			washera = standard.washer(d)
+					.transform((b+a+washer+2*play)*Z),
+			washerb = standard.washer(d)
+					.transform((b)*Z),
+			nut = standard.nut(d)
+					.transform((-c-r)*Z),
+			annotations = note_leading((b+a+2*washer+2*play+r)*Z, offset=d*(Z+X), text="M{:g}x{:g}".format(d, l)),
+			)
 	
 	holes = mesh.mesh([
 			centercylinder(foot_top, foot_hole_big, 5*width),
@@ -276,17 +120,6 @@ def foot(
 			centerslot(frontedge_top, nail_hole_big, 2*(width+washer+play)),
 			centerslot(frontedge_bot, nail_hole_small, 2*(width+washer+play)),
 			])
-	traverse0 = Solid(
-		body = difference(traverse0, holes) .finish().option(color=orange),
-		bolt_back = nail_mount_small.place((Revolute, OZ, backnail_bot)),
-		bolt_front = nail_mount_small.place((Revolute, OZ, frontedge_bot)),
-		)
-	traverse1 = Solid(
-		body = difference(traverse1, holes) .finish().option(color=orange),
-		bolt_back = nail_mount_big.place((Revolute, OZ, backnail_top)),
-		bolt_front = nail_mount_big.place((Revolute, OZ, frontedge_top)),
-		)
-	backnail = difference(backnail, inflate(holes, play))
 	
 	front_holes = mesh.mesh([
 			bolt_slot(
@@ -304,65 +137,248 @@ def foot(
 			centerslot(rightnail_top, nail_hole_small, 3*width + 2*(washer+play)*X),
 			centerslot(rightnail_bot, nail_hole_small, 3*width + 2*(washer+play)*X),
 		])
-	def frontnail_mount(r, a, b, c):
-		d = 2*r
-		l = stceil(a+b+c+2*washer+2*r)
+	
+	leg_profile = convexoutline(web([
+		Circle(foot_top.transform(front_size*Z), 2*foot_hole_big),
+		Circle(foot_top, 2*foot_hole_big),
+		Circle(foot_bot, 2*foot_hole_small),
+		]))
+
+
+	def leg():
+		thickness = 1.5
+		body = difference(
+			extrusion(
+				flatsurface(leg_profile),
+				width*Y,
+				alignment=0.5,
+				).orient(),
+			holes)
 		return Solid(
-			screw = standard.screw(d, l, head='button')
-					.transform((b+a+2*washer+2*play)*Z),
-			washera = standard.washer(d)
-					.transform((b+a+washer+2*play)*Z),
-			washerb = standard.washer(d)
-					.transform((b)*Z),
-			nut = standard.nut(d)
-					.transform((-c-r)*Z),
-			annotations = note_leading((b+a+2*washer+2*play+r)*Z, offset=d*(Z+X), text="M{:g}x{:g}".format(d, l)),
+			body = body,
+			bearing_top = slidebearing(2*foot_hole_big-2*thickness, 2.5*width, thickness) 
+				.place((Revolute, OZ, foot_top)) .transform(1.25*width*Y),
+			bearing_bot = slidebearing(2*foot_hole_small-2*thickness, 2.5*width, thickness) 
+				.place((Revolute, OZ, foot_bot)) .transform(1.25*width*Y),
 			)
-	frontnail_mount_small = frontnail_mount(nail_hole_small, width, width/2, width/2)
-	frontnail_mount_big = frontnail_mount(front_hole, width, 2.2*nail_hole_big, 2.2*nail_hole_big-2.5*front_hole)
 	
-	rightnail = difference(frontnail, front_holes)
-	leftnail = difference(frontnail.transform(scaledir(Y,-1)).flip(), front_holes)
-	fronttraverse0 = [
-		difference(fronttraverse0, inflate(front_holes, play)) .finish().option(color=orange),
-		frontnail_mount_small.place((Revolute, OZ, leftnail_bot)),
-		frontnail_mount_small.place((Revolute, OZ, rightnail_bot)),
-		]
-	fronttraverse1 = [
-		difference(fronttraverse1, inflate(front_holes, play)) .finish().option(color=orange),
-		frontnail_mount_small.place((Revolute, OZ, leftnail_top)),
-		frontnail_mount_small.place((Revolute, OZ, rightnail_top)),
-		]
-	side0 = Solid(
-		body = difference(side0, inflate(holes, play) + front_holes),
-		bolt_top = frontnail_mount_big.place((Revolute, OZ, front_top)),
-		bolt_bot = frontnail_mount_big.place((Revolute, OZ, front_bot)),
-		)
+	def backnail():
+		tiphigh = revolution(Softened([
+			vec3(0, 0., -nail_height),
+			vec3(-0.25*nail_width, 0., -nail_height),
+			vec3(-0.5*nail_width, 0., -nail_height*0.5),
+			vec3(-0.5*nail_width, 0., -nail_height*0.3),
+			vec3(-0.3*nail_width, 0., 1.9*parallelogram_height),
+			vec3(0, 0., 1.9*parallelogram_height),
+			])).flip()
+		backnail_attach_profile = convexoutline(web([
+			Circle(backnail_top, 2.4*nail_hole_big),
+			Circle(backnail_bot, 2.4*nail_hole_small),
+			Circle(
+				foot_bot.transform(rotatearound(front_angle, backnail_bot)), 
+				2.3*foot_hole_small),
+			])).orient().finish()
 	
-	thickness = 1.5
-	foot = [
-		slidebearing(2*foot_hole_big-2*thickness, 2.5*width, thickness) 
-			.place((Revolute, OZ, foot_top)) .transform(1.25*width*Y),
-		slidebearing(2*foot_hole_small-2*thickness, 2.5*width, thickness) 
-			.place((Revolute, OZ, foot_bot)) .transform(1.25*width*Y),
-		]
+		backnail = difference(tiphigh.transform(project(backnail_bot.origin, X)),
+			extrusion(
+				flatsurface(backnail_attach_profile).transform(0.5*width*Y).flip(), 
+				nail_width*Y).orient()
+			+ extrusion(
+				flatsurface(backnail_attach_profile).transform(-0.5*width*Y), 
+				-nail_width*Y).orient()
+			)
+		backnail_interference_profile = leg_profile.transform(rotatearound(front_angle, backnail_top) * foot_top.origin - foot_top.origin)
+		play = foot_hole_big*0.1
+		backnail = difference(backnail, inflate(extrusion(backnail_interference_profile, nail_width*Y, alignment=0.5).orient(), play))
+		backnail = difference(backnail, inflate(holes, play))
+		return backnail.finish()
 	
+	def nails_front_():
+		tiplow = revolution(Softened([
+			vec3(0, 0., -nail_height),
+			vec3(-0.25*nail_width, 0., -nail_height),
+			vec3(-0.5*nail_width, 0., -nail_height*0.5),
+			vec3(-0.5*nail_width, 0., -nail_height*0.3),
+			vec3(-0.25*nail_width, 0., 1.35*parallelogram_height),
+			vec3(0, 0., 1.35*parallelogram_height),
+			])).flip()
+		frontnail_attach_profile = convexoutline(web([
+			Circle(leftnail_top, 2.6*nail_hole_small),
+			Circle(leftnail_bot, 2.4*nail_hole_small),
+			Circle(front_top.transform(rotatearound(side_angle, leftnail_top)), 1.6*front_hole),
+			Circle(front_bot.transform(rotatearound(side_angle, leftnail_bot)), 1.6*front_hole),
+			]))
+		frontnail = difference(tiplow.transform(leftnail_bot.origin*vec3(1,1,0)),
+			extrusion(
+				flatsurface(frontnail_attach_profile).transform(0.5*width*X).flip(), 
+				2*width*X).orient()
+			+ extrusion(
+				flatsurface(frontnail_attach_profile).transform(-0.5*width*X), 
+				-2*width*X).orient()
+			)
+		frontnail_interference_profile = convexoutline(web([
+			Circle(front_top.transform(rotatearound(-side_angle, leftnail_top)), 1.7*width),
+			Circle(front_bot.transform(rotatearound(side_angle, leftnail_bot)).transform(0.5*parallelogram_height*Z), 1.7*width),
+			Circle(front_bot.transform(rotatearound(side_angle, leftnail_bot)), 2*front_hole),
+			]))
+		frontnail = difference(frontnail, extrusion(frontnail_interference_profile, 2*nail_width*X, alignment=0.5).orient())
+
+		return Solid(
+			right = difference(frontnail, front_holes).finish(),
+			left = difference(frontnail.transform(scaledir(Y,-1)).flip(), front_holes).finish(),
+			)
+	
+	def traverses_front_():
+		bot_profile = convexoutline(web([
+			Circle(foot_bot.transform(-0.1*parallelogram_height*Z), 1.8*foot_hole_small) .mesh().transform(scaledir(X,1.5)),
+			Circle(backnail_bot, 2*nail_hole_small),
+			Circle(Axis(0.5*parallelogram_height*Z+front_dist*X,Y), 2*nail_hole_small),
+			]))
+		top_profile = convexoutline(web([
+			Circle(foot_top.transform(0.1*parallelogram_height*Z), 1.8*foot_hole_big) .mesh().transform(scaledir(X,1.5)),
+			Circle(backnail_top, 2*nail_hole_big),
+			Circle(Axis(1.5*parallelogram_height*Z+front_dist*X,Y), 2*nail_hole_big),
+			]))
+	
+		edgeside = convexoutline(web([
+			Circle(Axis(foot_top.origin + width*Z, X), width),
+			Circle(Axis(foot_top.origin - foot_hole_big*Z, X), 1.8*width),
+			Circle(Axis(foot_bot.origin + foot_hole_small*Z, X), 1.8*width),
+			Circle(Axis(foot_bot.origin - width*Z, X), width),
+			])).mergegroups()
+		edgetop = convexoutline(web([
+			Circle(Axis(O,Z), 1.8*width).mesh() .transform(scaledir(X, 2)),
+			Circle(Axis(backnail_bot.origin*(1.1*X+Y), Z), 1.2*width),
+			Circle(Axis(frontedge_bot.origin*(1.1*X+Y), Z), 1.2*width),
+			])).mergegroups()
+		bot_body = difference(
+			intersection(
+				intersection(
+					extrusion(edgeside, front_size*3*X, alignment=0.5).orient(),
+					extrusion(bot_profile, 4*width*Y, alignment=0.5).orient(),
+					),
+				extrusion(edgetop, front_size*3*Z).orient(),
+				),
+			brick(center=O, width=(width+2*(washer+play))*Y + 4*front_size*(X+Z)),
+			)
+		top_body = difference(intersection(
+				intersection(
+					extrusion(edgeside, front_size*3*X, alignment=0.5).orient(),
+					extrusion(top_profile, 4*width*Y, alignment=0.5).orient(),
+					),
+				extrusion(edgetop, front_size*3*Z).orient(),
+				),
+			brick(center=O, width=(width+2*(washer+play))*Y + 4*front_size*(X+Z)),
+			)
+
+		nail_mount_small = nail_mount(nail_hole_small)
+		nail_mount_big = nail_mount(nail_hole_big)
+
+		return Solid(
+			bot = Solid(
+				body = difference(bot_body, holes) .finish().option(color=orange),
+				bolt_back = nail_mount_small.place((Revolute, OZ, backnail_bot)),
+				bolt_front = nail_mount_small.place((Revolute, OZ, frontedge_bot)),
+				),
+			top = Solid(
+				body = difference(top_body, holes) .finish().option(color=orange),
+				bolt_back = nail_mount_big.place((Revolute, OZ, backnail_top)),
+				bolt_front = nail_mount_big.place((Revolute, OZ, frontedge_top)),
+				),
+			)
+	
+	
+	def traverses_main_():
+		frontedge_top_profile = revolution(web([
+			wire([
+				leftnail_bot.origin + 3*nail_hole_small*Y + 0.5*width*X + (washer+play)*X,
+				leftnail_bot.origin - 1.5*nail_hole_small*Y + 0.5*width*X + (washer+play)*X,
+				front_bot.origin + (washer+play)*X + 2*width*Y + 2.2*nail_hole_big*X,
+				front_bot.origin + (washer+play)*X + 2.2*nail_hole_big*X,
+				]).segmented(),
+			wire([
+				front_bot.origin + 2.2*nail_hole_big*X + width*X + washer*X + front_hole*X,
+				front_bot.origin + 2.2*nail_hole_big*X + width*X + washer*X + front_hole*X + 2.5*front_hole*Y,
+				leftnail_bot.origin + 1.5*width*X + 3*nail_hole_small*Y,
+				]),
+			]).segmented(), Axis(O,X))
+		frontedge_top_profile.mergeclose()
+		
+		bot_profile = convexoutline(web([
+			Circle(Axis(front_dist*X, X), 1*width),
+			Circle(Axis(front_dist*X + side_dist*Y, X), 2.2*nail_hole_small),
+			Circle(Axis(front_dist*X - side_dist*Y, X), 2.2*nail_hole_small),
+			]))
+		bot = intersection(
+			extrusion(bot_profile.transform(0.5*width*X), 
+				4*width*X, 
+				alignment=0.1).orient(),
+			frontedge_top_profile,
+			)
+		top_profile = convexoutline(web([
+			Circle(Axis(parallelogram_height*Z + front_dist*X, X), 1.2*width),
+			Circle(Axis(parallelogram_height*Z + front_dist*X + side_dist*Y, X), 2.2*nail_hole_small),
+			Circle(Axis(parallelogram_height*Z + front_dist*X - side_dist*Y, X), 2.2*nail_hole_small),
+			]))
+		top = intersection(
+			extrusion(top_profile.transform(0.5*width*X), 
+				2*width*X + 2*front_hole*X, 
+				alignment=0.1).orient(),
+			frontedge_top_profile.transform(parallelogram_height*Z),
+			)
+	
+		frontnail_mount_small = frontnail_mount(nail_hole_small, width, width/2, width/2)
+		
+		return Solid(
+			bot = Solid(
+				body = difference(bot, inflate(front_holes, play)) .finish().option(color=orange),
+				left = frontnail_mount_small.place((Revolute, OZ, leftnail_bot)),
+				right = frontnail_mount_small.place((Revolute, OZ, rightnail_bot)),
+				),
+			top = Solid(
+				body = difference(top, inflate(front_holes, play)) .finish().option(color=orange),
+				left = frontnail_mount_small.place((Revolute, OZ, leftnail_top)),
+				right = frontnail_mount_small.place((Revolute, OZ, rightnail_top)),
+				),
+			)
+
+	def front_dispatcher():
+		front_dispatcher = convexhull(
+			cylinder(
+				+0.5*width*Y + 1.5*parallelogram_height*Z + front_dist*X,
+				-0.5*width*Y + 1.5*parallelogram_height*Z + front_dist*X,
+				2.2*nail_hole_big)
+			+ cylinder(
+				+2.2*nail_hole_big*X + front_dist*X,
+				-2.2*nail_hole_big*X + front_dist*X,
+				0.5*width)
+			)
+		frontnail_mount_big = frontnail_mount(front_hole, width, 2.2*nail_hole_big, 2.2*nail_hole_big-2.5*front_hole)
+		return Solid(
+			body = difference(front_dispatcher, inflate(holes, play) + front_holes).finish(),
+			bolt_top = frontnail_mount_big.place((Revolute, OZ, front_top)),
+			bolt_bot = frontnail_mount_big.place((Revolute, OZ, front_bot)),
+			)
+	
+	
+	nails_front = nails_front_()
+	traverses_main = traverses_main_()
+	traverses_front = traverses_front_()
 	kin = Kinematic(joints, ground='leg', content={
-		'foot': foot,
-		'side1': backnail,
-		'nail0': rightnail,
-		'nail1': leftnail,
+		'leg': leg(),
+		'backnail': backnail(),
+		'nail_front_right': nails_front.right,
+		'nail_front_left': nails_front.left,
 	
-		'side0': side0,
-		'traverse0': traverse0,
-		'traverse1': traverse1,
-		'fronttraverse0': fronttraverse0,
-		'fronttraverse1': fronttraverse1,
+		'front_dispatcher': front_dispatcher(),
+		'traverse_front_bot': traverses_front.bot,
+		'traverse_front_top': traverses_front.top,
+		'traverse_main_bot': traverses_main.bot,
+		'traverse_main_top': traverses_main.top,
 		})
 	return Solid(
 		kinematic = kin,
 		axis = Axis(-nail_height*Z, Z),
-		attach = leg_attach,
 		)
 
 
