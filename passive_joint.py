@@ -37,6 +37,7 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 		interface = Solid(
 			perimeter = Circle(axis, radius),
 			div = div,
+			dscrew = dscrew,
 			diameters = diameters_list,
 			height = height,
 			annotations = Solid(
@@ -90,7 +91,6 @@ def ball_bearing(dint, dext=None, h=None, **kwargs):
 
 @cachefunc
 def passive_joint(rext, dscrew, nscrew=8):
-	print(rext, 4*dscrew)
 	rint = stfloor(rext - 4*dscrew)
 	bdint = stceil(2*(rint+0.7*dscrew))
 	bdext = stfloor(2*(rext-0.7*dscrew))
@@ -141,7 +141,7 @@ def passive_joint(rext, dscrew, nscrew=8):
 			+ profile.flip().transform(scaledir(Z, -1))
 			).close())
 		screwing = circular_screwing(
-			Axis(-bearing.height*0.7*Z - dscrew*Z, Z), 
+			Axis(bearing.height*0.7*Z + dscrew*Z, -Z), 
 			radius = rint, 
 			height = 1.4*bearing.height + 2*dscrew, 
 			dscrew = dscrew,
@@ -152,6 +152,7 @@ def passive_joint(rext, dscrew, nscrew=8):
 		return copy(screwing.interface).update(
 			input = intersection(part, split),
 			output = intersection(part, split.flip()),
+			bearing = bearing,
 			height = height,
 			annotations = note_distance(O, height*Z, offset=-1.5*rext*X),
 			)
@@ -159,7 +160,6 @@ def passive_joint(rext, dscrew, nscrew=8):
 	return Solid(
 		outer = outer(rext, rint),
 		inner = inner(rext, rint),
-		bearing = bearing,
 		)
 
 if __name__ == '__madcad__':

@@ -93,6 +93,7 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 		interface = Solid(
 			perimeter = Circle(axis, radius),
 			div = div,
+			dscrew = dscrew,
 			diameters = diameters_list,
 			height = height,
 			annotations = Solid(

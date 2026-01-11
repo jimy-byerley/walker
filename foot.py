@@ -27,10 +27,10 @@ def foot(
 	nail_width = parallelogram_height * 1.5
 	nail_height = parallelogram_height * 1.6
 	# hole sizes
-	foot_hole_big = stfloor(parallelogram_height*0.3, precision=0.2)
-	foot_hole_small = stfloor(parallelogram_height*0.2, precision=0.2)
-	nail_hole_big = stfloor(parallelogram_height*0.15, precision=0.2)
-	nail_hole_small = stfloor(parallelogram_height*0.12, precision=0.2)
+	foot_hole_big = stfloor(parallelogram_height*0.3, precision=0.3)
+	foot_hole_small = stfloor(parallelogram_height*0.2, precision=0.3)
+	nail_hole_big = stfloor(parallelogram_height*0.15, precision=0.3)
+	nail_hole_small = stfloor(parallelogram_height*0.12, precision=0.3)
 	front_hole = stfloor(mix(nail_hole_big, nail_hole_small, 0.5), precision=0.2)
 	
 	legdir = normalize(3*Z-X)
@@ -371,7 +371,8 @@ if __name__ == '__madcad__':
 
 #	foot1 = foot(50, 45, 20)
 #	foot2 = foot(50*2, 45*2, 20*2)
-	foot2 = foot(120, 110, 50)
+#	foot2 = foot(120, 110, 50)
+	foot3 = foot(60, 55, 25)
 
 
 # TODO try non parallel (evasive) nails to reduce bulkiness and improve stability
