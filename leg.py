@@ -82,6 +82,49 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 			]
 	return screwing
 
+def screw_slot(axis: Axis, dscrew: float, rslot=None, hole=0., screw=0., expand=True, flat=False) -> Mesh:
+	''' slot shape for a screw
+		the result can then be used in a boolean operation to reserve set a screw place in an arbitrary shape
+		
+		Parameters:
+			axis:  the screw axis placement, z toward the screw head (part exterior)
+			dscrew: the screw diameter
+			rslot:  the screw head slot radius
+			hole:   
+				- if `True`, enables a cylindric hole for screw body of length `dscrew*3`
+				- if `float`, it is the screw hole length
+			screw:  if non zero, this is the length of a thiner portion of hole after `hole`, the diameter is adjusted so that the screw can screw in
+			expand: 
+				- if `True`, enables slots sides
+				- if `float`, it is the slot sides height
+			flat:   if True, the slot will be conic do receive a flat head screw
+	'''
+	if not rslot:	rslot = 1.1*dscrew
+	o = axis[0]
+	x,y,z = dirbase(axis[1])
+
+	profile = []
+	if expand:
+		if isinstance(expand, bool):		expand = 2*rslot
+		profile.append(ArcCentered(
+			Axis(o +expand*z, y), 
+			o + expand*z +rslot*z,
+			o + expand*z +rslot*x,
+			))
+	profile.append(o + rslot*x)
+	if hole or screw:
+		if flat:
+			profile.append(o + 0.5*dscrew*(x-z) - (rslot-dscrew)*z)
+			hole = max(hole, dot(o-profile[-1], z))
+		else:
+			profile.append(o + 0.5*dscrew*x)
+		profile.append(o + 0.5*dscrew*x - hole*z)
+		profile.append(o + 0.4*dscrew*x - min(hole+0.1*dscrew, hole+screw)*z)
+		profile.append(o + 0.4*dscrew*x - (hole+screw)*z)
+		profile.append(o - (hole+screw+0.4*dscrew)*z)
+	else:
+		profile.append(o)
+	return revolution(wire(profile).segmented(), Axis(o,-z)).finish()
 
 
 
@@ -116,15 +159,14 @@ def references(
 
 def joint_slot(interface):
 	x,y,z = dirbase(-interface.perimeter.axis.direction)
-	hole = revolution(web([
+	hole = revolution(wire([
 		-interface.height*2*z + interface.perimeter.radius*1.05*x,
 		-interface.height*z + interface.perimeter.radius*1.05*x,
 		-interface.height*z + interface.perimeter.radius*x - interface.diameters[0]*x,
 		interface.diameters[0]*z + interface.perimeter.radius*x - interface.diameters[0]*x,
-		interface.diameters[0]*3*z + interface.perimeter.radius*x + interface.diameters[0]*x,
-		interface.perimeter.radius*z + interface.perimeter.radius*x + interface.diameters[0]*x,
-		interface.perimeter.radius*z + interface.perimeter.radius*x + interface.diameters[0]*x*2,
-		]).segmented()).orient().transform(interface.perimeter.center)
+		interface.diameters[0]*3*z + interface.perimeter.radius*x + interface.diameters[0]*0.5*x,
+		interface.perimeter.radius*3*z + interface.perimeter.radius*x + interface.diameters[0]*0.5*x,
+		]).segmented()).orient().flip().transform(interface.perimeter.center)
 #	screwing = circular_screwing(interface.perimeter.axis, interface.perimeter.radius, interface.height, stfloor(interface.diameters[0], 0.3))
 	screwing = Mesh()
 	for p in regon(interface.perimeter.axis.offset(-interface.dscrew), interface.perimeter.radius, interface.div).points:
@@ -133,7 +175,7 @@ def joint_slot(interface):
 			dscrew = interface.dscrew, 
 			rslot = 1.3*interface.dscrew, 
 			hole = interface.height, 
-			expand = interface.perimeter.radius,
+			expand = 2*interface.diameters[0],
 			)
 	return intersection(hole, screwing)
 
@@ -162,10 +204,6 @@ def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 			),
 		extrusion(top, -refs.leg_length*Z, alignment=0.5).orient(),
 		)
-#	body = intersection(body, extrusion(flatsurface(convexoutline(web([
-#			Circle(shoulder.output.perimeter.axis.transform(shoulder.pose), shoulder.output.perimeter.radius*0.8),
-#			Circle(gearbox.output.perimeter.axis.transform(gearbox.pose), gearbox.output.perimeter.radius*0.8),
-#		]))).transform(-3*gearbox.output.dscrew*Y), -gearbox.output.height*Y).orient().flip())
 	body = intersection(body, saddle(
 		flatsurface(Ellipsis(
 			shoulder.output.perimeter.axis.transform(shoulder.pose).offset(-gearbox.output.perimeter.radius*0.6).origin,
@@ -198,6 +236,42 @@ def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 		gearbox = gearbox,
 		passive1 = passive1,
 		passive2 = passive2,
+		)
+
+def foreleg_body(refs, leading, edge1, edge2, foot):
+	left = Softened([
+		refs.foreknee + leading.perimeter.radius*2.5*Z + leading.perimeter.radius*0.4*Y,
+		refs.foreknee + leading.perimeter.radius*2.5*Z + leading.perimeter.radius*0.5*Y,
+		refs.foreknee + leading.perimeter.radius*1*Y,
+		mix(refs.foot_center, refs.foreknee, 0.45),
+		mix(refs.foot_center, refs.foreknee, 0.4),
+		])
+	right = convexoutline(web([
+		Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.55), Y), 20),
+		Circle(leading.perimeter.axis.transform(leading.pose), leading.perimeter.radius + leading.dscrew*1.5),
+		Circle(edge1.perimeter.axis.transform(edge1.pose), edge1.perimeter.radius + edge1.dscrew*1.5),
+		Circle(edge2.perimeter.axis.transform(edge2.pose), edge2.perimeter.radius + edge2.dscrew*1.5),
+		]))
+
+	body = intersection(
+		extrusion(flatsurface(right), leading.perimeter.radius*2*Y).orient(),
+		extrusion(left, leading.perimeter.radius*3*X, alignment=0.5).flip(),
+		)
+	body1 = intersection(
+		intersection(
+			body,
+			joint_slot(leading).transform(leading.pose),
+			),
+		joint_slot(edge1).transform(edge1.pose)
+		+ joint_slot(edge2).transform(edge2.pose),
+		)
+
+	return Solid(
+		body = body1.finish(),
+		leading = leading,
+		edge1 = edge1,
+		edge2 = edge2,
+		foot = foot,
 		)
 
 bone_curving = -1.2
@@ -294,59 +368,55 @@ def assemble(refs):
 		gearbox = gearbox.place((Revolute, gearbox.output.perimeter.axis, Axis(refs.shoulder, -Y))),
 		)
 
-	# for knee joint
+	# for backnee joint
 	gearbox = strainwave(refs.gearbox_leg, 60, nscrews=8)
 	passive = passive_joint(20, dscrew=4, nscrew=4)
-	knee = Solid(
+	backknee = Solid(
 		gearbox = gearbox.place((Revolute, gearbox.output.perimeter.axis, Axis(refs.backknee + refs.knees[0], -Y))),
-		passive1 = passive.transform(
+		edge1 = passive.transform(
 			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.backknee + refs.knees[1], -Y)))
+			* rotate(0.5, Z)
+			),
+		edge2 = passive.transform(
+			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.backknee + refs.knees[2], -Y)))
 			* rotate(1.1, Z)
 			),
-		passive2 = passive.transform(
-			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.backknee + refs.knees[2], -Y)))
+		)
+
+	# for foreknee joint
+	passive_big = passive_joint(50, dscrew=5, nscrew=8)
+	foreknee = Solid(
+		edge0 = passive_big.place((Revolute, passive_big.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[0], Y))),
+		edge1 = passive.transform(
+			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[1], Y)))
+			* rotate(1.1, Z)
+			),
+		edge2 = passive.transform(
+			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[2], Y)))
 			* rotate(0.5, Z)
 			),
 		)
-	backleg = backleg_body(refs, 
-		shoulder.gearbox.deloc('shell'),
-		knee.gearbox.deloc('shell'), 
-		knee.passive1.deloc('outer'), 
-		knee.passive2.deloc('outer'),
-		)
-	
-	passive_big = passive_joint(50, dscrew=5, nscrew=8)
 
+	# subsystem managing contact with the ground
 	size = refs.gearbox_leg*2
 	foot1 = foot(
 		front_size = stceil(size), 
 		side_size = stceil(size*0.9),
 		parallelogram_height = stceil(size*0.4),
+		).transform(placement((Revolute, Axis(O,Z), Axis(refs.foot_center, Z))) * rotate(pi, Z))
+
+	backleg = backleg_body(refs, 
+		shoulder.gearbox.deloc('shell'),
+		backknee.gearbox.deloc('shell'), 
+		backknee.edge1.deloc('outer'), 
+		backknee.edge2.deloc('outer'),
 		)
-	foreleg = Solid(
-		passive0 = passive_big.place((Revolute, passive_big.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[0], Y))),
-		passive1 = passive.transform(
-			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[1], Y)))
-			* rotate(0.5, Z)
-			),
-		passive2 = passive.transform(
-			placement((Revolute, passive.inner.perimeter.axis, Axis(refs.foreknee + refs.knees[2], Y)))
-			* rotate(1.1, Z)
-			),
-		body = convexoutline(web([
-			Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.55), Y), 20),
-			Circle(Axis(refs.foreknee + refs.knees[0], Y), gearbox.shell.output.perimeter.radius + gearbox.shell.output.diameters[0]),
-			Circle(Axis(refs.foreknee + refs.knees[1], Y), passive.outer.perimeter.radius + gearbox.shell.output.diameters[0]),
-			Circle(Axis(refs.foreknee + refs.knees[2], Y), passive.outer.perimeter.radius + gearbox.shell.output.diameters[0]),
-			])),
-		foot = foot1.transform(placement((Revolute, Axis(O,Z), Axis(refs.foot_center, Z))) * rotate(pi, Z)),
+	foreleg = foreleg_body(refs,
+		foreknee.edge0.deloc('outer'),
+		foreknee.edge1.deloc('outer'),
+		foreknee.edge2.deloc('outer'),
+		foot1,
 		)
-
-
-#	l = foreleg(refs, passive_big, passive)
-#	content['foreleg'].some = foreleg(refs, content['foreleg'].passive0, content['foreleg'].passive1)
-	
-
 
 	return Kinematic(joints, ground='chest', content={
 		'chest': Solid(
@@ -361,16 +431,19 @@ def assemble(refs):
 		'backleg': backleg,
 		'foreleg': foreleg,
 		'edge-0': Solid(
-			body = traverse_main(refs.backknee + refs.knees[0], refs.foreknee + refs.knees[0], knee.gearbox),
-			gearbox = knee.gearbox.deloc('output'),
+			body = traverse_main(refs.backknee + refs.knees[0], refs.foreknee + refs.knees[0], backknee.gearbox),
+			start = backknee.gearbox.deloc('output'),
+			stop = foreknee.edge0.deloc('inner'),
 			),
 		'edge-1': Solid(
 			body = traverse_secondary(refs.backknee + refs.knees[1], refs.foreknee + refs.knees[1]),
-			start = knee.passive1.deloc('inner'),
+			start = backknee.edge1.deloc('inner'),
+			stop = foreknee.edge1.deloc('inner'),
 			),
 		'edge-2': Solid(
 			body = traverse_secondary(refs.backknee + refs.knees[2], refs.foreknee + refs.knees[2]),
-			start = knee.passive2.deloc('inner'),
+			start = backknee.edge2.deloc('inner'),
+			stop = foreknee.edge2.deloc('inner'),
 			),
 		})
 
