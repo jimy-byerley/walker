@@ -158,11 +158,12 @@ def references(
 
 
 def joint_slot(interface):
+	play = 0.1
 	x,y,z = dirbase(-interface.perimeter.axis.direction)
 	hole = revolution(wire([
-		-interface.height*2*z + interface.perimeter.radius*1.05*x,
-		-interface.height*z + interface.perimeter.radius*1.05*x,
-		-interface.height*z + interface.perimeter.radius*x - interface.diameters[0]*x,
+		-interface.height*3*z + interface.perimeter.radius*x + interface.diameters[0]*1.5*x,
+		+play*interface.perimeter.axis.direction + interface.perimeter.radius*x + interface.diameters[0]*1.5*x,
+		+play*interface.perimeter.axis.direction + interface.perimeter.radius*x - interface.diameters[0]*x,
 		interface.diameters[0]*z + interface.perimeter.radius*x - interface.diameters[0]*x,
 		interface.diameters[0]*3*z + interface.perimeter.radius*x + interface.diameters[0]*0.5*x,
 		interface.perimeter.radius*3*z + interface.perimeter.radius*x + interface.diameters[0]*0.5*x,
@@ -220,18 +221,18 @@ def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 		joint_slot(shoulder.output)
 			.transform(rotatearound(pi/8, shoulder.output.perimeter.axis))
 			.transform(shoulder.pose)
-		+ joint_slot(passive1).transform(passive1.pose)
-		+ joint_slot(passive2).transform(passive2.pose),
 		)
-	body2 = intersection(
-		body1,
+	body2 = intersection(body1, joint_slot(passive1).transform(passive1.pose))
+	body3 = intersection(body2, joint_slot(passive2).transform(passive2.pose))
+	body4 = intersection(
+		body3,
 		joint_slot(gearbox.output)
 			.transform(rotatearound(pi/8, gearbox.output.perimeter.axis))
 			.transform(gearbox.pose),
 		)
 	
 	return Solid(
-		body = body2.finish(),
+		body = body4.finish(),
 		shoulder = shoulder,
 		gearbox = gearbox,
 		passive1 = passive1,
@@ -239,35 +240,65 @@ def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 		)
 
 def foreleg_body(refs, leading, edge1, edge2, foot):
+	w = 10
 	left = Softened([
 		refs.foreknee + leading.perimeter.radius*2.5*Z + leading.perimeter.radius*0.4*Y,
 		refs.foreknee + leading.perimeter.radius*2.5*Z + leading.perimeter.radius*0.5*Y,
 		refs.foreknee + leading.perimeter.radius*1*Y,
-		mix(refs.foot_center, refs.foreknee, 0.45),
-		mix(refs.foot_center, refs.foreknee, 0.4),
+		mix(refs.foot_center, refs.foreknee, 0.45) + w*Y,
+		mix(refs.foot_center, refs.foreknee, 0.4) + w*Y,
 		])
-	right = convexoutline(web([
-		Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.55), Y), 20),
-		Circle(leading.perimeter.axis.transform(leading.pose), leading.perimeter.radius + leading.dscrew*1.5),
-		Circle(edge1.perimeter.axis.transform(edge1.pose), edge1.perimeter.radius + edge1.dscrew*1.5),
-		Circle(edge2.perimeter.axis.transform(edge2.pose), edge2.perimeter.radius + edge2.dscrew*1.5),
-		]))
-
-	body = intersection(
-		extrusion(flatsurface(right), leading.perimeter.radius*2*Y).orient(),
+#	right = convexoutline(web([
+#		Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.45) + w*Y, Y), 20),
+#		Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.45) - w*Y, Y), 20),
+#		Circle(leading.perimeter.axis.transform(leading.pose), leading.perimeter.radius + leading.dscrew*1.5),
+#		Circle(edge1.perimeter.axis.transform(edge1.pose), edge1.perimeter.radius + edge1.dscrew*1.5),
+#		Circle(edge2.perimeter.axis.transform(edge2.pose), edge2.perimeter.radius + edge2.dscrew*1.5),
+#		]))
+#	body = intersection(
+#			extrusion(flatsurface(right), leading.perimeter.radius*2*Y).orient(),
+#			extrusion(left, leading.perimeter.radius*3*X, alignment=0.5).flip(),
+#			)
+	right = convexhull(mesh.mesh([
+		cylinder(
+			mix(refs.foot_center, refs.foreknee, 0.45) + w*Y,
+			mix(refs.foot_center, refs.foreknee, 0.45) - w*Y, 
+			20),
+		cylinder(
+			leading.perimeter.axis.transform(leading.pose).origin, 
+			leading.perimeter.axis.transform(leading.pose).offset(-leading.perimeter.radius*0.5).origin, 
+			leading.perimeter.radius + leading.dscrew*1.5),
+		cylinder(
+			edge1.perimeter.axis.transform(edge1.pose).origin, 
+			edge1.perimeter.axis.transform(edge1.pose).offset(-edge1.perimeter.radius*0.5).origin, 
+			edge1.perimeter.radius + edge1.dscrew*1.5),
+		cylinder(
+			edge2.perimeter.axis.transform(edge2.pose).origin, 
+			edge2.perimeter.axis.transform(edge2.pose).offset(-edge2.perimeter.radius*0.5).origin, 
+			edge2.perimeter.radius + edge2.dscrew*1.5),
+		])).mergegroups()
+	body = intersection(right, 
 		extrusion(left, leading.perimeter.radius*3*X, alignment=0.5).flip(),
 		)
+		
+	r = leading.perimeter.radius
 	body1 = intersection(
-		intersection(
 			body,
-			joint_slot(leading).transform(leading.pose),
-			),
-		joint_slot(edge1).transform(edge1.pose)
-		+ joint_slot(edge2).transform(edge2.pose),
-		)
+			joint_slot(leading).transform(leading.pose)
+			+ extrusion(
+				Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.55), Y), r*0.3),
+				r*3*Y, alignment=0.5,
+				).flip()
+			+ extrusion(
+				Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.72), Y), r*0.4),
+				r*3*Y, alignment=0.5,
+				).flip()
+			)
+	body2 = intersection(body1, joint_slot(edge1).transform(edge1.pose))
+	body3 = intersection(body2, joint_slot(edge2).transform(edge2.pose))
 
 	return Solid(
-		body = body1.finish(),
+		body = body3.finish(),
 		leading = leading,
 		edge1 = edge1,
 		edge2 = edge2,
@@ -450,14 +481,6 @@ def assemble(refs):
 
 settings.resolution = ('sqradm', 1.)
 
-#refs = references(
-#	leg_length = 400,
-#	traverse_length = 200,
-#	offset_shoulder = 40,
-#	offset_traverse = 90,
-#	foot_clearance = 50,
-#	knee_radius = 50,
-#	)
 refs = references(
 	leg_length = 550,
 	backleg_length = 165,
