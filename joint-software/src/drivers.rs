@@ -87,6 +87,7 @@ where PWM: PwmPeripheral + 'd,
         self.voltage_estimation = modulations * self.modulation_to_voltage;
     }
     pub fn disable(&mut self) {
+        self.modulate(Vector::fill(0.)); // TODO remove this when power_enable is fixed
         self.power_enable.set_low();
         self.current_estimation = Vector::zero();
         self.voltage_estimation = Vector::zero();

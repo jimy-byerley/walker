@@ -1,4 +1,4 @@
-use std::{future, time::Duration};
+use std::{future, time::{Duration, Instant}};
 use futures_concurrency::future::Race;
 use packbytes::{FromBytes, ToBytes};
 use uartcat::master::Host;
@@ -7,7 +7,7 @@ pub mod registers;
 
 #[tokio::main]
 async fn main() -> Result<(), uartcat::master::Error> {
-    let master = uartcat::master::Master::new("/dev/ttyUSB1", 1_500_000) .expect("openning uart port");
+    let master = uartcat::master::Master::new("/dev/ttyUSB1", 1_000_000) .expect("openning uart port");
     
     let task = async {
         let slave = master.slave(Host::Topological(0));
@@ -34,7 +34,10 @@ async fn main() -> Result<(), uartcat::master::Error> {
             println!("calibrate");
             slave.write(registers::target::MODE, registers::Mode::CalibrateFocContinuous).await?.one()?;
             loop {
-                let status = slave.read(registers::current::STATUS).await?.one()?;
+//                 let status = slave.read(registers::current::STATUS).await?.one()?;
+                let status = slave.read(registers::current::STATUS).await;
+                let Ok(status) = status else {continue};
+                let status = status.one()?;
                 if status.fault() {
                     println!("calibration error {:?}", slave.read(registers::current::ERROR).await?.one()?);
                     panic!("failed to calibrate");
@@ -53,8 +56,14 @@ async fn main() -> Result<(), uartcat::master::Error> {
             slave.write(registers::target::LIMIT_POSITION, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
             slave.write(registers::target::LIMIT_VELOCITY, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
             slave.write(registers::target::LIMIT_FORCE, registers::Range {start: -f32::INFINITY, stop: f32::INFINITY}).await?.one()?;
-            slave.write(registers::target::FORCE, rated_force * 0.5).await?.one()?;
+            slave.write(registers::target::FORCE, rated_force * 1.5).await?.one()?;
             slave.write(registers::target::MODE, registers::Mode::Control).await?.one()?;
+            
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_secs(10) {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+            slave.write(registers::target::MODE, registers::Mode::Off).await?.one()?;
             
             future::pending().await
         };

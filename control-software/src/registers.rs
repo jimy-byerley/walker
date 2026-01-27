@@ -44,8 +44,8 @@ pub mod typical {
 }
 pub const END: usize = 0x5d0;
 
-pub const CURRENT_UNIT: f32 = 1. / (1u16<<12) as f32;
-pub const VOLTAGE_UNIT: f32 = 1. / (1u16<<12) as f32;
+pub const CURRENT_UNIT: f32 = 1. / (1u16<<10) as f32;
+pub const VOLTAGE_UNIT: f32 = 1. / (1u16<<10) as f32;
 
 
 #[bitsize(8)]
