@@ -221,11 +221,11 @@ Driver<'d, PWM, MEM> {
             Mode::Control => {
                 before = true;
                 self.status.set_powered(true);
-//                 let target_force = force_command + force_constant + force_position * position + force_velocity * velocity;
-//                 let target_force = target_force.clamp(limit_force.start, limit_force.stop);
-//                 let target_force = soft_command_limit(target_force, position, (limit_position.start, limit_position.stop), 0.1);
-//                 let target_force = soft_command_limit(target_force, velocity, (limit_velocity.start, limit_velocity.stop), 0.1);
-                let voltages = self.foc.control(force_command, self.power_voltage);
+                let target_force = force_command + force_constant + force_position * position + force_velocity * velocity;
+                let target_force = target_force.clamp(limit_force.start, limit_force.stop);
+                let target_force = soft_command_limit(target_force, position, (limit_position.start, limit_position.stop), 0.1);
+                let target_force = soft_command_limit(target_force, velocity, (limit_velocity.start, limit_velocity.stop), 0.1);
+                let voltages = self.foc.control(target_force, self.power_voltage);
                 let modulations = clamp_voltage(voltages / self.power_voltage, (0., 1.));
                 self.motor_driver.modulate(modulations);
             },

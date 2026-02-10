@@ -117,21 +117,21 @@ impl Foc {
         // considering one phase alone:  u = R i + L di/dt
         // use resistance for feed forward
         let mut target_voltage = target_field * self.motor.phase_resistance;
-//         // use inductance for correction
-//         let error = target_field - self.current_field;
-//         self.integral += error * self.period;
-//         // proportional correction
-//         target_voltage += error * self.gains.proportional * self.motor.phase_inductance;
-//         if target_voltage.length() > max_voltage {
-//             target_voltage *= max_voltage / target_voltage.length();
-//         }
-//         // integral correction
-//         target_voltage += self.integral * self.gains.integral * self.motor.phase_inductance;
-//         if target_voltage.length() > max_voltage && self.gains.integral * self.motor.phase_inductance != 0. {
-//             let clamped = target_voltage * max_voltage / target_voltage.length();
-//             self.integral += (clamped - target_voltage) / (self.gains.integral * self.motor.phase_inductance);
-//             target_voltage = clamped;
-//         }
+        // use inductance for correction
+        let error = target_field - self.current_field;
+        self.integral += error * self.period;
+        // proportional correction
+        target_voltage += error * self.gains.proportional * self.motor.phase_inductance;
+        if target_voltage.length() > max_voltage {
+            target_voltage *= max_voltage / target_voltage.length();
+        }
+        // integral correction
+        target_voltage += self.integral * self.gains.integral * self.motor.phase_inductance;
+        if target_voltage.length() > max_voltage && self.gains.integral * self.motor.phase_inductance != 0. {
+            let clamped = target_voltage * max_voltage / target_voltage.length();
+            self.integral += (clamped - target_voltage) / (self.gains.integral * self.motor.phase_inductance);
+            target_voltage = clamped;
+        }
         
         self.transform.rotor_to_phases(target_voltage)
     }
@@ -239,11 +239,12 @@ pub fn clamp_voltage(voltages: Vector<Float, PHASES>, saturation: (Float, Float)
 
 pub fn soft_command_limit(command: Float, limited: Float, limit: (Float, Float), soft: Float) -> Float {
 //     return command;
+    // TODO handle the case where one or two bounds are inf
     let range = soft * (limit.1 - limit.0);
     if command > 0. {
         command * ((limit.1 - limited) / range).clamp(0., 1.)
     }
     else {
-        command * ((limit.0 - limited) / range).clamp(0., 1.)
+        command * ((limited - limit.0) / range).clamp(0., 1.)
     }
 }

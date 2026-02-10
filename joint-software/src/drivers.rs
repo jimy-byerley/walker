@@ -171,7 +171,7 @@ where
     pub async fn measure(&mut self) -> Result<(Vector<Float,PHASES>, Vector<Float,PHASES>), ControlError> {
         let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
         let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
-        let max_adc_value = (1<<12) -1;
+        let max_adc_value = (1<<12) -1; // adc precision is 12 bit
         let max_adc_voltage = 2.45; // adc max on esp32 with 0db attenuation
         let amplifier = 50.; // INA181A2 gain
         let resistor = 0.01; // sense resistor ohm
