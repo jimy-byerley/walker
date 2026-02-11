@@ -142,15 +142,16 @@ pub struct MultiTurnObserver {
     period: Float,
     lowpass_rate: Float,
     last_absolute: Float,
-    last_velocity: Float,
+    last_velocity: [Float; MULTITURN_LOWPASS_ORDER+1],
 }
+const MULTITURN_LOWPASS_ORDER: usize = 2; // order of the linear low pass filter
 impl MultiTurnObserver {
     pub fn new(period: Float, lowpass: Float) -> Self {
         Self {
             period,
             lowpass_rate: continuous_to_discrete_filter(period, lowpass),
             last_absolute: 0.,
-            last_velocity: 0.,
+            last_velocity: [0.; _],
         }
     }
     /// reset count of turns to the given absolute position
@@ -166,10 +167,13 @@ impl MultiTurnObserver {
         // low-pass filter velocity
         let diff = absolute - self.last_absolute;
         if diff.abs() < 0.1 {
-            self.last_velocity = self.last_velocity*(1.-self.lowpass_rate) + diff / self.period * self.lowpass_rate;
+            self.last_velocity[0] = diff / self.period;
+            for i in 1 .. self.last_velocity.len() {
+                self.last_velocity[i] = self.last_velocity[i]*(1.-self.lowpass_rate) + self.last_velocity[i-1] * self.lowpass_rate;
+            }
         }
         self.last_absolute = absolute;
-        (absolute, self.last_velocity)
+        (absolute, self.last_velocity.last().unwrap().clone())
     }
 }
 

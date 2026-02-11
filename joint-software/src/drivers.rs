@@ -130,7 +130,6 @@ where
             ),
         current_adc: ADC,
         current_pins: (ADC0, ADC1),
-        current_estimation: Vector<Float, PHASES>,
         
         power_voltage: Float,
         ) -> Self

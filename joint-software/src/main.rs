@@ -84,7 +84,7 @@ async fn main(_spawner: Spawner) {
             .into_async()
     );
     
-    let power_voltage = 24.; // volts
+    let power_voltage = 14.; // volts
     let gearbox_ratio = 30.;
     let motor = MotorProfile {
         poles: 2,
@@ -177,7 +177,6 @@ Driver<'d, PWM, MEM> {
     }
     
     async fn control(&mut self) -> Result<(), ControlError> {
-        let mut before = false;
         loop {
             self.tick.next().await;
             // measures
@@ -219,7 +218,6 @@ Driver<'d, PWM, MEM> {
                 self.motor_driver.disable();
             },
             Mode::Control => {
-                before = true;
                 self.status.set_powered(true);
                 let target_force = force_command + force_constant + force_position * position + force_velocity * velocity;
                 let target_force = target_force.clamp(limit_force.start, limit_force.stop);
@@ -347,8 +345,8 @@ Driver<'d, PWM, MEM> {
         self.status.set_calibrated(false);
         self.slave.lock().await.set(registers::current::STATUS, self.status);
 
-        let voltage = 1.2 * self.motor.rated_current * self.motor.phase_resistance;
-        let rotations = 2.;
+        let voltage = (self.motor.rated_current * self.motor.phase_resistance).min(self.power_voltage);
+        let rotations = 1.;
         let velocity = 0.5; // rotation/s
 
         // measure offset between rotor position from encoder and field position
@@ -423,12 +421,10 @@ Driver<'d, PWM, MEM> {
             let offset = wrap_as(expected_position - position, offsets / correlations, 1.);
             offsets += offset * correlation;
             correlations += correlation;
-//             dbg!(offset);
             
             // set the field in the direction of position we want the motor to go
             transform.set_position(expected_position * Float::from(self.motor.poles) * Float::PI()*2.);
             let voltages = transform.rotor_to_phases(Vector::from([target_voltage, 0.]));
-//             dbg!(voltages);
             self.motor_driver.modulate(clamp_voltage(voltages / self.power_voltage, (0., 1.)));
         }
         

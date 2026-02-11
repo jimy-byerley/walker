@@ -18,6 +18,8 @@ async fn main() -> Result<(), Error> {
             .one().expect("wrong number of slaves");
         while slave.read(registers::current::STATUS).await?.one()?.fault() {}
         
+        let rr = rerun::RecordingStreamBuilder::new("joint control").spawn().unwrap();
+        
         let mut mapping = Mapping::new();
         let buffer = mapping.buffer::<State>().unwrap()
             .register(slave.address(), registers::current::ERROR)
@@ -36,14 +38,13 @@ async fn main() -> Result<(), Error> {
 //             println!("apply constant force");
 //             constant_force(&slave).await?;
             println!("pd control loop");
-            infinite_sine(&slave).await?;
+            infinite_sine(&slave, &rr).await?;
             
             future::pending().await
         };
         let monitor = async {
             let stream = master.stream(buffer).await?;
             stream.send_read().await.unwrap();
-            let rr = rerun::RecordingStreamBuilder::new("joint control").spawn().unwrap();
 
             loop {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -97,7 +98,7 @@ async fn calibrate(slave: &Slave<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-async fn infinite_sine(slave: &Slave<'_>) -> Result<(), Error> {
+async fn infinite_sine(slave: &Slave<'_>, rr: &rerun::RecordingStream) -> Result<(), Error> {
     let gain_position = 10.;
     let gain_velocity = 10.;
     let inertia = 0.01;
@@ -130,6 +131,9 @@ async fn infinite_sine(slave: &Slave<'_>) -> Result<(), Error> {
         slave.write(registers::target::FORCE, 
             target_position * gain_position * gain_velocity * inertia
             + target_velocity * gain_velocity * inertia).await?.one()?;
+            
+        rr.log("target_position", &rerun::Scalars::single(target_position)).unwrap();
+        rr.log("target_velocity", &rerun::Scalars::single(target_velocity)).unwrap();
     }
 }
 
