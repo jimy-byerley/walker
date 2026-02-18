@@ -38,6 +38,9 @@ use crate::{
     foc::*,
     registers::{ControlError, Mode, Status},
     };
+    
+#[macro_use]
+extern crate alloc;
 
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -239,7 +242,48 @@ Driver<'d, PWM, MEM> {
         }
     }
     
-    async fn calibrate_impedance(&mut self) -> Result<(), ControlError> {todo!()}
+    async fn calibrate_impedance(&mut self) -> Result<(), ControlError> {
+        use rand::prelude::*;
+        use rand::{Rng, RngExt};
+        use rand::rngs::SmallRng;
+        use rand::distr::{Distribution, StandardUniform};
+    
+        let amplitude = self.power_voltage * 0.001;
+        let limit = self.power_voltage * 0.1;
+        let mut transform = SpaceVectorTransform::new();
+        let mut rng = SmallRng::seed_from_u64(1);
+        
+        const SAMPLES: usize = 1000;
+        let mut record_current = Matrix::<Float, SAMPLES, 2>::default();
+        let mut record_voltage = Matrix::<Float, SAMPLES, 2>::default();
+        let mut i = 0;
+        while i < SAMPLES {
+            // measures
+            let position_encoder = self.rotor_sensor.angle().await.unwrap();
+            let (currents, voltages) = self.motor_driver.measure().await?;
+            let current = transform.phases_to_stator(currents);
+            let voltage = transform.phases_to_stator(voltages);
+            // generate noise
+            let target_voltage = voltage + Vector::from(core::array::from_fn(|_| amplitude * rng.sample::<Float, _>(StandardUniform)));
+            let modulations = clamp_voltage(
+                transform.stator_to_phases(target_voltage) / self.power_voltage, 
+                (0., limit / self.power_voltage));
+            self.motor_driver.modulate(modulations);
+            // record
+            *record_current.row_mut(i) = current;
+            *record_voltage.row_mut(i) = voltage;
+            i += 1;
+        }
+        
+        // u = L * di/dt + R i = (i  di/dt) * (R  L)^T
+        // int(u, 0, n) = L * (i(n) - i(0)) + R int(i, 0, n)
+        // U = I * Z  => I^T U = I^T * I U  => (I^T * I)^-1 * I^T U = Z
+        
+        let impedance = record_current.transpose().dot(record_current).inv().dot(record_current.transpose().dot(record_voltage));
+        let error = (record_voltage - record_current.dot(impedance)).map(Float::abs).max();
+        
+        Ok(())
+    }
     async fn calibrate_foc_constant(&mut self) -> Result<(), ControlError> {
         todo!()
 //         self.status.set_powered(true);

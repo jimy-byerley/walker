@@ -1,3 +1,6 @@
+
+use core::ops::{Add, Mul, Sub};
+
 use num_traits::float::{Float as FloatTrait, FloatConst};
 use esp_println::{println, dbg};
 
@@ -169,7 +172,7 @@ impl MultiTurnObserver {
         if diff.abs() < 0.1 {
             self.last_velocity[0] = diff / self.period;
             for i in 1 .. self.last_velocity.len() {
-                self.last_velocity[i] = self.last_velocity[i]*(1.-self.lowpass_rate) + self.last_velocity[i-1] * self.lowpass_rate;
+                self.last_velocity[i] = lerp(self.last_velocity[i], self.last_velocity[i-1], self.lowpass_rate);
             }
         }
         self.last_absolute = absolute;
@@ -198,6 +201,12 @@ pub fn continuous_to_discrete_gain(period: Float, proportional: Float) -> Float 
 }
 pub fn continuous_to_discrete_filter(period: Float, proportional: Float) -> Float {
     1. - (-proportional * period).exp()
+}
+
+pub fn lerp<T>(a: T, b: T, x: Float) -> T
+where T: Add<Output=T> + Mul<Float, Output=T>
+{
+    a*(1.-x) + b*x
 }
 
 pub struct SpaceVectorTransform<const N: usize> {
@@ -230,6 +239,12 @@ impl<const N: usize> SpaceVectorTransform<N> {
     pub fn rotor_to_phases(&self, field: Vector<Float, 2>) -> Vector<Float, N> {
         self.stator_to_phases.dot(self.rotor_to_stator.dot(field))
     }
+    pub fn phases_to_stator(&self, phases: Vector<Float, N>) -> Vector<Float, 2> {
+        self.phases_to_stator.dot(phases)
+    }
+    pub fn stator_to_phases(&self, field: Vector<Float, 2>) -> Vector<Float, N> {
+        self.stator_to_phases.dot(field)
+    }
 }
 
 /// if voltage out of bounds, center it to reduce saturations, then saturate
@@ -250,5 +265,86 @@ pub fn soft_command_limit(command: Float, limited: Float, limit: (Float, Float),
     }
     else {
         command * ((limited - limit.0) / range).clamp(0., 1.)
+    }
+}
+
+
+/**
+    continuously solves `a*x = b`, where 
+    - `a` is a matrix (T,A)
+    - `b` is a matrix (T,B)
+    - `x` is the solution matrix (A,B) to find
+    - `T` is the amount of samples until now
+    
+    it uses a 1th order lowpass filter to lower the weight of samples with time passing
+*/
+pub struct RollingLinearRegression<const A: usize, const B: usize> {
+    lowpass_rate: Float,
+    initial_aa: Matrix<Float, A, A>,
+    initial_ab: Matrix<Float, A, B>,
+    aa: Matrix<Float, A, A>,
+    ab: Matrix<Float, A, B>,
+    x: Matrix<Float, A, B>,
+    err: Vector<Float, B>,
+}
+impl<const A: usize, const B: usize> RollingLinearRegression<A, B> {
+    /**
+        - `initial` is the initial value of the model, and the value the regression returns to in case of singular input
+        - `prec_a` is a value of smaller order of magnitude than the expected samples, used to detect when to fallback to the initial model
+        - `lowpass_rate` is the rate of the 1th order lowpass filter lowering important of old samples
+    */
+    pub fn new(initial: Matrix<Float, A, B>, prec_a: Vector<Float, A>, lowpass_rate: Float) -> Self {
+        let a = Matrix::diagonal(prec_a);
+        let b = a.dot(initial);
+        Self {
+            aa: Matrix::zero(), 
+            ab: Matrix::zero(),
+            lowpass_rate,
+            initial_aa: a.transpose().dot(a),
+            initial_ab: a.transpose().dot(b),
+            x: initial,
+            err: Vector::zero(),
+        }
+    }
+    /** add a batch of samples to the regression
+        
+        - they all count the same weight
+        - all previous samples weights are lowered
+    */
+    pub fn add<const N: usize>(&mut self, a: Matrix<Float, N, A>, b: Matrix<Float, N, B>) {
+        self.aa = lerp(self.aa, a.transpose().dot(a), self.lowpass_rate);
+        self.ab = lerp(self.ab, a.transpose().dot(b), self.lowpass_rate);
+        self.x = (self.aa + self.initial_aa).inv().dot(self.ab + self.initial_ab);
+        let pred = a.dot(self.x);
+        for i in 0 .. N {
+            self.err = lerp(self.err, (b.row(i) - pred.row(i)) .map(|x| x*x), self.lowpass_rate);
+        }
+    }
+    /// current solution of the regression
+    pub fn solution(&self) -> Matrix<Float, A, B> {
+        self.x
+    }
+    /// current standard reprojection error on `b`
+    pub fn error(&self) -> Vector<Float, B> {
+        self.err.map(Float::sqrt)
+    }
+}
+
+/// simple discontinuous rolling buffer
+pub struct RollingBuffer<T, const N: usize> {
+    pub buffer: [T; N],
+    pub index: usize,
+}
+impl<T: Default, const N: usize> RollingBuffer<T,N> {
+    pub fn new() -> Self {
+        Self {
+            buffer: core::array::from_fn(|_| T::default()),
+            index: 0,
+        }
+    }
+    pub fn push(&mut self, mut value: T) -> T {
+        core::mem::swap(&mut value, &mut self.buffer[self.index]);
+        self.index = (self.index + 1) %N;
+        value
     }
 }
