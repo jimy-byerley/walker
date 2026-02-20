@@ -15,6 +15,8 @@ use esp_hal::{
     timer::timg::TimerGroup,
     uart::{Uart, DataBits, Parity, StopBits, RxConfig},
     mcpwm::PwmPeripheral,
+    analog::adc::*,
+    gpio::{*, interconnect::PeripheralOutput},
 };
 use embassy_executor::Spawner;
 use embassy_time::{Instant, Duration, Ticker};
@@ -112,11 +114,19 @@ async fn main(_spawner: Spawner) {
 //         encoder_to_rotor: 1.,
         slave: &slave,
         tick: Ticker::every(Duration::from_micros((period * 1e6) as _)),
-        motor_driver: MksDualFocV32::new(
+//         motor_driver: MksDualFocV32::new(
+//             peripherals.GPIO22,
+//             peripherals.MCPWM0,
+//             (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
+//             motor.phase_resistance,
+//             power_voltage,
+//             ),
+        motor_driver: MksDualFocV33::new(
             peripherals.GPIO22,
             peripherals.MCPWM0,
             (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
-            motor.phase_resistance,
+            peripherals.ADC1,
+            (peripherals.GPIO0, peripherals.GPIO2),
             power_voltage,
             ),
         rotor_sensor: As5600::new(&bus),
@@ -132,14 +142,15 @@ async fn main(_spawner: Spawner) {
 }
 
 
-struct Driver<'d, PWM, const MEM: usize> {
+struct Driver<'d, PWM, ADC, ADC1, ADC0, const MEM: usize> {
     motor: MotorProfile,
     power_voltage: Float,
     encoder_to_output: Float,
     encoder_to_rotor: Float,
     tick: Ticker,
     slave: &'d uartcat::slave::Slave<Uart<'d, esp_hal::Async>, MEM>,
-    motor_driver: MksDualFocV32<'d, PWM>,
+//     motor_driver: MksDualFocV32<'d, PWM>,
+    motor_driver: MksDualFocV33<'d, ADC, ADC1, ADC0, PWM>,
     rotor_sensor: As5600<'d, I2c<'d, esp_hal::Async>>,
     multiturn: MultiTurnObserver,
     foc: Foc,
@@ -148,8 +159,14 @@ struct Driver<'d, PWM, const MEM: usize> {
     error: ControlError,
     status: Status,
 }
-impl<'d, PWM: PwmPeripheral + 'd, const MEM: usize>
-Driver<'d, PWM, MEM> {
+impl<'d, PWM, ADC, ADC1, ADC0, const MEM: usize>
+Driver<'d, PWM, ADC, ADC1, ADC0, MEM>
+where
+    PWM: PwmPeripheral + 'd,
+    ADC: RegisterAccess + 'd,
+    ADC0: AdcChannel + AnalogPin,
+    ADC1: AdcChannel + AnalogPin,
+{
     async fn run(&mut self) {
         self.write_typical().await;
         loop {

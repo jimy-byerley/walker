@@ -1,43 +1,10 @@
 
-use core::ops::{Add, Mul, Sub};
+use core::ops::{Add, Mul};
 
 use num_traits::float::{Float as FloatTrait, FloatConst};
 use esp_println::{println, dbg};
 
 use crate::prelude::*;
-
-
-// fn flat() {
-//     loop
-//         // checks
-//         check_rotor_encoder().await
-//         check_output_encoder().await
-//         for _ in 0 .. 10
-//             // measures
-//             position_output = measure_output_encoder().await
-//             for _ in 0 .. 10
-//                 currents = measure_currents().await
-//                 position_rotor = measure_rotor_encoder().await
-//                 // observations
-//                 (position_fast, current_velocity) = multiturn.observe(position_rotor) * rotor_output_ratio
-//                 current_position = filter.observe(position_output, position_fast)
-//                 current_torque = foc.observe(currents, (current_position + position_offset) * rotor_stator_ratio)
-//                 // exchanges
-//                 buffer = slave.lock().await
-//                 buffer.set(registers::current::POSITION, current_position)
-//                 force = buffer.get(registers::target::FORCE)
-//                 ...
-//                 // decisions
-//                 if powered ...
-//                 // controls
-//                 target_torque = force + force_constant + force_position * current_position + force_velocity * current_velocity
-//                 target_torque = target_torque.clamp(limit_force)
-//                 target_torque = control_barrier(target_torque, position, limit_position)
-//                 target_torque = control_barrier(target_torque, position, limit_velocity)
-//                 target_voltages = foc.control(target_torque, max_voltage)
-//                 target_modulations = clamp_relative(target_voltages / power_voltage, (0, 1))
-//                 modulate(modulations)
-// }
 
 
 
@@ -268,6 +235,30 @@ pub fn soft_command_limit(command: Float, limited: Float, limit: (Float, Float),
     }
 }
 
+
+// pub struct LowPassFilter<T, const ORDER: usize> {
+//     rate: Float,
+//     value: [T; ORDER+1],
+// }
+
+// pub struct Impedance {
+//     pub resistance: Float,
+//     pub inductance: Float,
+// }
+// pub struct ImpedanceObserver<const N: usize> {
+//     period: Float,
+//     transform: SpaceVectorTransform<PHASES>,
+//     regression: RollingLinearRegression<PHASES, PHASES>,
+//     bcurrent: RollingBuffer<Vector<Float, 2>, N>,
+//     bvoltage: RollingBuffer<Vector<Float, 2>, N>,
+//     icurrent: Float,
+//     ivoltage: Float,
+// }
+// impl<const N: usize> ImpedanceObserver<N> {
+//     pub fn new(period: Float, initial: Impedance, noise_current: Float, lowpass: Float) -> Self {todo!()}
+//     pub fn observe(&mut self, currents: Vector<Float, PHASES>, voltages: Vector<Float, PHASES>) -> Impedance {todo!()}
+//     pub fn stimulate(&mut self) -> Vector<Float, PHASES> {todo!()}
+// }
 
 /**
     continuously solves `a*x = b`, where 
