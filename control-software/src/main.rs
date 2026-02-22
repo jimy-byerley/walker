@@ -47,7 +47,7 @@ async fn main() -> Result<(), Error> {
             stream.send_read().await.unwrap();
 
             loop {
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(Duration::from_millis(5)).await;
                 stream.send_read().await.unwrap();
 //                 let data = stream.receive().await.unwrap().one().unwrap();
                 let data = stream.get().await;

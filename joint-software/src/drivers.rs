@@ -112,7 +112,7 @@ pub struct MksDualFocV33<'d, ADC, ADC1, ADC0, PWM> {
     modulation_to_voltage: Float,
     voltage_estimation: Vector<Float, PHASES>,
     adc_to_current: Float,
-    adc_zero: Float,
+    adc_zero: Vector<Float, 2>,
 }
 impl<'d, ADC, ADC1, ADC0, PWM> 
 MksDualFocV33<'d, ADC, ADC1, ADC0, PWM> 
@@ -172,10 +172,11 @@ where
             modulation_to_voltage: power_voltage,
             voltage_estimation: Vector::zero(),
             adc_to_current: max_adc_voltage / (amplifier_gain * resistor),
-            adc_zero: amplifier_ref,
+            adc_zero: Vector::fill(amplifier_ref),
             }
     }
     
+    /// measure the given amount of current samples on all pins and return the average
     async fn current_samples(&mut self, samples: u16) -> Vector<Float, 2> {   
         let max_adc_value = (1<<12) -1; // adc precision is 12 bit
         
@@ -192,15 +193,16 @@ where
         i / (Float::from(samples) * Float::from(max_adc_value))
     }
     
+    /// calibrate zero current offsets with each current amplifier
     pub async fn calibrate(&mut self) {
         self.disable();
         let measure = self.current_samples(100).await;
         dbg!(measure);
-        self.adc_to_current = self.adc_zero * (measure.as_array().len() as Float) / measure.sum();
+        self.adc_zero = self.adc_to_current * measure;
     }
     
     pub async fn measure(&mut self) -> Result<(Vector<Float,PHASES>, Vector<Float,PHASES>), ControlError> {
-        let i = self.current_samples(10).await * self.adc_to_current - Vector::fill(self.adc_zero);
+        let i = self.current_samples(4).await * self.adc_to_current - self.adc_zero;
         Ok((
             Vector::from([i[0], i[1], -i[0]-i[1]]),
             self.voltage_estimation,

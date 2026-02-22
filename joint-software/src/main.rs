@@ -199,8 +199,12 @@ where
         loop {
             self.tick.next().await;
             // measures
-            let position_encoder = self.rotor_sensor.angle().await.unwrap();
-            let (currents, voltages) = self.motor_driver.measure().await?;
+            let (rotor, motor) = (
+                self.rotor_sensor.angle(),
+                self.motor_driver.measure(),
+                ).join().await;
+            let position_encoder = rotor.unwrap();
+            let (currents, voltages) = motor?;
             
             // observations
             let (position_multi, velocity_multi) = self.multiturn.observe(position_encoder);
@@ -345,7 +349,7 @@ where
         log::debug!("calibrate +");
         let offset_positive = self.calibrate_biased_offset(0., rotations, velocity, voltage).await?;
         log::debug!("calibrate -");
-        let offset_negative = self.calibrate_biased_offset(rotations, 0., velocity, voltage).await?;
+        let offset_negative = self.calibrate_biased_offset(rotations, 0., -velocity, voltage).await?;
         log::debug!("calibrate done");
         self.rotor_offset = (offset_positive + wrap_as(offset_negative, offset_positive, 1.)) /2.;
         log::debug!("offset {}", self.rotor_offset);
@@ -396,13 +400,11 @@ where
             
             // next move
             let t = (elapsed.elapsed().as_micros() as f32) * 1e-6;
-            let expected_position;
+            let expected_position = start + expected_velocity * t;
             if stop > start {
-                expected_position = start + expected_velocity * t;
                 if expected_position > stop {break}
             }
             else {
-                expected_position = start - expected_velocity * t;
                 if expected_position < stop {break}
             }
             
