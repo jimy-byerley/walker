@@ -124,9 +124,9 @@ async fn main(_spawner: Spawner) {
         motor_driver: MksDualFocV33::new(
             peripherals.GPIO22,
             peripherals.MCPWM0,
-            (peripherals.GPIO32, peripherals.GPIO25, peripherals.GPIO33),
+            (peripherals.GPIO32, peripherals.GPIO33, peripherals.GPIO25),
             peripherals.ADC1,
-            (peripherals.GPIO0, peripherals.GPIO2),
+            (peripherals.GPIO39, peripherals.GPIO36),
             power_voltage,
             ),
         rotor_sensor: As5600::new(&bus),
@@ -137,6 +137,7 @@ async fn main(_spawner: Spawner) {
         error: ControlError::default(),
         status: Status::default()
         };
+    driver.motor_driver.calibrate().await;
     
     (driver.run(), slave.run()).join().await;
 }

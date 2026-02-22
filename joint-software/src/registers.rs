@@ -85,10 +85,10 @@ pub struct Range {
 
 #[derive(Copy, Clone, FromBytes, ToBytes, Debug)]
 pub struct Phases {
-    pub phases: [u16; 3],
+    pub phases: [i16; 3],
 }
-impl From<[u16; 3]> for Phases {
-    fn from(phases: [u16; 3]) -> Self {Self {phases}}
+impl From<[i16; 3]> for Phases {
+    fn from(phases: [i16; 3]) -> Self {Self {phases}}
 }
 
 #[bitsize(8)]

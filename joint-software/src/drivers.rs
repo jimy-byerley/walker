@@ -111,6 +111,8 @@ pub struct MksDualFocV33<'d, ADC, ADC1, ADC0, PWM> {
         ),
     modulation_to_voltage: Float,
     voltage_estimation: Vector<Float, PHASES>,
+    adc_to_current: Float,
+    adc_zero: Float,
 }
 impl<'d, ADC, ADC1, ADC0, PWM> 
 MksDualFocV33<'d, ADC, ADC1, ADC0, PWM> 
@@ -156,6 +158,11 @@ where
             config.enable_pin(current_pins.1, Attenuation::_11dB),
             );
         let adc = Adc::new(current_adc, config);
+        
+        let max_adc_voltage = 2.45; // adc max on esp32 with 0db attenuation
+        let amplifier_gain = 50.; // INA181A2 gain
+        let amplifier_ref = (0. + 3.3)*0.5; // voltage received from amplifier when current is zero
+        let resistor = 0.01; // sense resistor ohm
      
         Self {
             power_enable,
@@ -164,20 +171,38 @@ where
             current_pins,
             modulation_to_voltage: power_voltage,
             voltage_estimation: Vector::zero(),
+            adc_to_current: max_adc_voltage / (amplifier_gain * resistor),
+            adc_zero: amplifier_ref,
             }
     }
-
-    pub async fn measure(&mut self) -> Result<(Vector<Float,PHASES>, Vector<Float,PHASES>), ControlError> {
-        let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
-        let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
+    
+    async fn current_samples(&mut self, samples: u16) -> Vector<Float, 2> {   
         let max_adc_value = (1<<12) -1; // adc precision is 12 bit
-        let max_adc_voltage = 2.45; // adc max on esp32 with 0db attenuation
-        let amplifier = 50.; // INA181A2 gain
-        let resistor = 0.01; // sense resistor ohm
-        let i0 = Float::from(max_adc_value - i0) / Float::from(max_adc_value) * max_adc_voltage / (amplifier * resistor);
-        let i1 = Float::from(max_adc_value - i1) / Float::from(max_adc_value) * max_adc_voltage / (amplifier * resistor);
+        
+        let mut i = Vector::<Float, 2>::zero();
+        for _ in 0 .. samples {
+            let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
+            let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
+
+            i += Vector::from([
+                max_adc_value - i0, 
+                max_adc_value - i1,
+                ]).map(Float::from);
+        }
+        i / (Float::from(samples) * Float::from(max_adc_value))
+    }
+    
+    pub async fn calibrate(&mut self) {
+        self.disable();
+        let measure = self.current_samples(100).await;
+        dbg!(measure);
+        self.adc_to_current = self.adc_zero * (measure.as_array().len() as Float) / measure.sum();
+    }
+    
+    pub async fn measure(&mut self) -> Result<(Vector<Float,PHASES>, Vector<Float,PHASES>), ControlError> {
+        let i = self.current_samples(10).await * self.adc_to_current - Vector::fill(self.adc_zero);
         Ok((
-            Vector::from([i0, i1, -i0-i1]),
+            Vector::from([i[0], i[1], -i[0]-i[1]]),
             self.voltage_estimation,
             ))
     }
