@@ -202,7 +202,7 @@ where
     }
     
     pub async fn measure(&mut self) -> Result<(Vector<Float,PHASES>, Vector<Float,PHASES>), ControlError> {
-        let i = self.current_samples(4).await * self.adc_to_current - self.adc_zero;
+        let i = self.current_samples(3).await * self.adc_to_current - self.adc_zero;
         Ok((
             Vector::from([i[0], i[1], -i[0]-i[1]]),
             self.voltage_estimation,

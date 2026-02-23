@@ -1,3 +1,5 @@
+#![no_std]
+
 use bilge::prelude::*;
 use packbytes::{FromBytes, ToBytes};
 use uartcat::registers::{Register, SlaveRegister};
@@ -14,6 +16,9 @@ pub mod current {
     pub const FORCE: SlaveRegister<f32> = Register::new(0x50c);
     pub const CURRENTS: SlaveRegister<Phases> = Register::new(0x510);
     pub const VOLTAGES: SlaveRegister<Phases> = Register::new(0x516);
+    
+    pub const RESISTANCE: SlaveRegister<f32> = Register::new(0x51a);
+    pub const INDUCTANCE: SlaveRegister<f32> = Register::new(0x51d);
 }
 /// target and settings for control loop
 pub mod target {
@@ -41,8 +46,22 @@ pub mod typical {
     pub const MAX_VOLTAGE: SlaveRegister<f32> = Register::new(0x5a8);
     pub const MAX_CURRENT: SlaveRegister<f32> = Register::new(0x5ac);
     pub const MAX_FORCE: SlaveRegister<f32> = Register::new(0x5b0);
+    
+    pub const POWER_VOLTAGE: SlaveRegister<f32> = Register::new(0x5b4);
+    pub const RESISTANCE: SlaveRegister<f32> = Register::new(0x5b8);
+    pub const INDUCTANCE: SlaveRegister<f32> = Register::new(0x5bc);
 }
-pub const END: usize = 0x5d0;
+pub mod timing {
+    use super::*;
+    
+    /// last control period duration
+    pub const PERIOD: SlaveRegister<f32> = Register::new(0x5d0);
+    /// last duration of measurements
+    pub const MEASURE: SlaveRegister<f32> = Register::new(0x5d4);
+    /// last duration of control computations
+    pub const PROCESS: SlaveRegister<f32> = Register::new(0x5d8);
+}
+pub const END: usize = 0x5e0;
 
 pub const CURRENT_UNIT: f32 = 1. / (1u16<<10) as f32;
 pub const VOLTAGE_UNIT: f32 = 1. / (1u16<<10) as f32;
@@ -56,8 +75,6 @@ pub enum Mode {
     Off = 0,
     Control = 1,
     CalibrateImpedance = 2,
-    CalibrateFocConstant = 3,
-    CalibrateFocVibrations = 4,
     CalibrateFocContinuous = 5,
 }
 pack_enum!(Mode);
@@ -72,8 +89,7 @@ pub struct Status {
 }
 pack_bilge!(Status);
 
-
-#[derive(Copy, Clone, FromBytes, ToBytes)]
+#[derive(Copy, Clone, FromBytes, ToBytes, Debug)]
 pub struct Range {
     pub start: f32,
     pub stop: f32,

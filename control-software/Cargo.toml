@@ -10,4 +10,5 @@ futures-concurrency = { version = "7.6", default-features=false }
 tokio = { version="^1.48", features = ["io-util", "time", "rt-multi-thread", "macros"] }
 
 uartcat = { version = "0.1.2", features = ["master"], path = "../uartcat" }
+joint-registers = { version = "0.1.0", path = "../joint-software/registers" }
 rerun = "0.27.3"

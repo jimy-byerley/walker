@@ -3,7 +3,7 @@ use futures_concurrency::future::Race;
 use packbytes::{FromBytes, ToBytes};
 use uartcat::master::{Error, Master, Slave, Host, Mapping};
 
-pub mod registers;
+use joint_registers as registers;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -28,13 +28,17 @@ async fn main() -> Result<(), Error> {
             .register(slave.address(), registers::current::FORCE)
             .register(slave.address(), registers::current::CURRENTS)
             .register(slave.address(), registers::current::VOLTAGES)
+            
+            .register(slave.address(), registers::timing::PERIOD)
+            .register(slave.address(), registers::timing::MEASURE)
+            .register(slave.address(), registers::timing::PROCESS)
             .build();
         
         mapping.configure(&slave).await.unwrap();
         
         let control = async {
             println!("calibrate");
-            calibrate(&slave).await?;
+            calibrate_offset(&slave).await?;
 //             println!("apply constant force");
 //             constant_force(&slave).await?;
             println!("pd control loop");
@@ -57,6 +61,10 @@ async fn main() -> Result<(), Error> {
                 rr.log("force", &rerun::Scalars::single(data.force)).unwrap();
                 rr.log("currents", &rerun::Scalars::new(data.currents.phases.into_iter().map(|x| f32::from(x) * registers::CURRENT_UNIT))).unwrap();
                 rr.log("voltages", &rerun::Scalars::new(data.voltages.phases.into_iter().map(|x| f32::from(x) * registers::VOLTAGE_UNIT))).unwrap();
+                
+                rr.log("timing/period", &rerun::Scalars::single(data.duration_period)).unwrap();
+                rr.log("timing/measure", &rerun::Scalars::single(data.duration_measure)).unwrap();
+                rr.log("timing/process", &rerun::Scalars::single(data.duration_process)).unwrap();
             }
         };
         (control, monitor).race().await
@@ -75,10 +83,17 @@ struct State {
     force: f32,
     currents: registers::Phases,
     voltages: registers::Phases,
+    duration_period: f32,
+    duration_measure: f32,
+    duration_process: f32,
 }
 
 
-async fn calibrate(slave: &Slave<'_>) -> Result<(), Error> {
+// async fn calibrate_impedance(slave: &Slave<'_>) -> Result<(), Error> {
+//     slave.write(registers::target::MODE, registers::Mode::CalibrateImpedance).await?.one()?;
+// }
+
+async fn calibrate_offset(slave: &Slave<'_>) -> Result<(), Error> {
     slave.write(registers::target::MODE, registers::Mode::CalibrateFocContinuous).await?.one()?;
     loop {
         let status = slave.read(registers::current::STATUS).await;

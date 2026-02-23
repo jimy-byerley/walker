@@ -1,0 +1,13 @@
+[package]
+name = "joint-registers"
+version      = "0.1.0"
+edition      = "2024"
+
+[dependencies]
+bilge = "0.3"
+packbytes = { version="0.2", features = ['packbytes-derive'], default-features=false }
+
+uartcat = { version = "0.1.2", features=[], path = "../../uartcat" }
+
+[features]
+std = []

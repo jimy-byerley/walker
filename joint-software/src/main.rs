@@ -24,6 +24,8 @@ use futures_concurrency::future::Join;
 use esp_println::dbg;
 use num_traits::FloatConst;
 
+use joint_registers as registers;
+
 mod utils;
 mod prelude;
 pub mod i2c;
@@ -31,7 +33,6 @@ pub mod as5600;
 // pub mod tcs3472;
 pub mod foc;
 pub mod drivers;
-pub mod registers;
 
 use crate::{
     prelude::*,
@@ -99,7 +100,7 @@ async fn main(_spawner: Spawner) {
         rated_current: 0.91, // amps
     };
     
-    let period = 0.5e-3; // second
+    let period = 1e-3; // second
     let gains = CorrectorGains {
         proportional: 10., // Hz
         integral: 5., // Hz
@@ -196,22 +197,26 @@ where
     }
     
     async fn control(&mut self) -> Result<(), ControlError> {
+        let [mut duration_measure, mut duration_period, mut duration_process] = [Duration::from_micros(0); _];
         loop {
+            let start_period = Instant::now();
             self.tick.next().await;
             // measures
+            let start_measure = Instant::now();
             let (rotor, motor) = (
                 self.rotor_sensor.angle(),
                 self.motor_driver.measure(),
                 ).join().await;
             let position_encoder = rotor.unwrap();
             let (currents, voltages) = motor?;
+            duration_measure = start_measure.elapsed();
             
+            let start_process = Instant::now();
             // observations
             let (position_multi, velocity_multi) = self.multiturn.observe(position_encoder);
             let position = position_multi * self.encoder_to_output;
             let velocity = velocity_multi * self.encoder_to_output;
             let force = self.foc.observe(position_multi * self.encoder_to_rotor + self.rotor_offset, currents);
-//                 let force = self.foc.observe(position_encoder, currents);
             
             // exchanges
             let mut buffer = self.slave.lock().await;
@@ -222,6 +227,9 @@ where
             buffer.set(registers::current::FORCE, force);
             buffer.set(registers::current::CURRENTS, currents.as_array().map(|x|  (x / registers::CURRENT_UNIT) as _).into());
             buffer.set(registers::current::VOLTAGES, voltages.as_array().map(|x|  (x / registers::VOLTAGE_UNIT) as _).into());
+            buffer.set(registers::timing::PERIOD, duration_period.as_micros() as f32 *1e-6);
+            buffer.set(registers::timing::MEASURE, duration_measure.as_micros() as f32 *1e-6);
+            buffer.set(registers::timing::PROCESS, duration_process.as_micros() as f32 *1e-6);
             self.mode = buffer.get(registers::target::MODE);
             let force_command = buffer.get(registers::target::FORCE);
             let force_constant = buffer.get(registers::target::FORCE_CONSTANT);
@@ -259,6 +267,8 @@ where
                     {return Ok(())}
             },
             }
+            duration_process = start_process.elapsed();
+            duration_period = start_period.elapsed();
         }
     }
     
