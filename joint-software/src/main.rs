@@ -22,7 +22,7 @@ use embassy_executor::Spawner;
 use embassy_time::{Instant, Duration, Ticker};
 use futures_concurrency::future::Join;
 use esp_println::dbg;
-use num_traits::FloatConst;
+use num_traits::{Float as _, FloatConst};
 
 use joint_registers as registers;
 
@@ -94,7 +94,7 @@ async fn main(_spawner: Spawner) {
     let gearbox_ratio = 30.;
     let motor = MotorProfile {
         poles: 2,
-        phase_resistance: 12., // ohm
+        phase_resistance: 14., // ohm
         phase_inductance: 0., // henry
         rated_torque: 62e-3, // N.m
         rated_current: 0.91, // amps
@@ -102,8 +102,8 @@ async fn main(_spawner: Spawner) {
     
     let period = 1e-3; // second
     let gains = CorrectorGains {
-        proportional: 10., // Hz
-        integral: 5., // Hz
+        proportional: 50., // Hz
+        integral: 10., // Hz
     };
     let velocity_lowpass = 100.; // Hz
 
@@ -189,7 +189,7 @@ where
     async fn write_typical(&self) {
         // expose characteristics to master
         let mut buffer = self.slave.lock().await;
-        buffer.set(registers::typical::RATED_FORCE, self.motor.rated_torque);
+        buffer.set(registers::typical::RATED_FORCE, self.motor.rated_torque / self.encoder_to_output);
         buffer.set(registers::typical::RATED_CURRENT, self.motor.rated_current);
         buffer.set(registers::typical::MAX_VOLTAGE, self.power_voltage);
         buffer.set(registers::typical::MAX_CURRENT, self.power_voltage / (2. * self.motor.phase_resistance));
@@ -197,6 +197,7 @@ where
     }
     
     async fn control(&mut self) -> Result<(), ControlError> {
+        let mut force_demand = 0.;
         let [mut duration_measure, mut duration_period, mut duration_process] = [Duration::from_micros(0); _];
         loop {
             let start_period = Instant::now();
@@ -216,7 +217,7 @@ where
             let (position_multi, velocity_multi) = self.multiturn.observe(position_encoder);
             let position = position_multi * self.encoder_to_output;
             let velocity = velocity_multi * self.encoder_to_output;
-            let force = self.foc.observe(position_multi * self.encoder_to_rotor + self.rotor_offset, currents);
+            let force = self.foc.observe(position_multi * self.encoder_to_rotor + self.rotor_offset, currents) / self.encoder_to_output;
             
             // exchanges
             let mut buffer = self.slave.lock().await;
@@ -230,6 +231,7 @@ where
             buffer.set(registers::timing::PERIOD, duration_period.as_micros() as f32 *1e-6);
             buffer.set(registers::timing::MEASURE, duration_measure.as_micros() as f32 *1e-6);
             buffer.set(registers::timing::PROCESS, duration_process.as_micros() as f32 *1e-6);
+            buffer.set(registers::current::FORCE_DEMAND, force_demand);
             self.mode = buffer.get(registers::target::MODE);
             let force_command = buffer.get(registers::target::FORCE);
             let force_constant = buffer.get(registers::target::FORCE_CONSTANT);
@@ -254,7 +256,8 @@ where
                 let target_force = target_force.clamp(limit_force.start, limit_force.stop);
                 let target_force = soft_command_limit(target_force, position, (limit_position.start, limit_position.stop), 0.1);
                 let target_force = soft_command_limit(target_force, velocity, (limit_velocity.start, limit_velocity.stop), 0.1);
-                let voltages = self.foc.control(target_force, self.power_voltage);
+                force_demand = target_force;
+                let voltages = self.foc.control(target_force * self.encoder_to_output, self.power_voltage);
                 let modulations = clamp_voltage(voltages / self.power_voltage, (0., 1.));
                 self.motor_driver.modulate(modulations);
             },
@@ -280,13 +283,13 @@ where
         
         self.status.set_powered(true);
     
-        let amplitude = self.power_voltage * 0.001;
-        let limit = self.power_voltage * 0.1;
+        let amplitude = self.power_voltage * 0.05;
+        let limit = self.power_voltage * 0.2;
         let mut rng = SmallRng::seed_from_u64(1);
         
         let noise_current = 0.05;
         let lowpass = 1.;
-        const SAMPLES: usize = 100;
+        const SAMPLES: usize = 2;
         let period = self.foc.period();
         let mut transform = SpaceVectorTransform::new();
         let mut regression = RollingLinearRegression::new(
@@ -303,12 +306,12 @@ where
             // measures
             let (currents, voltages) = self.motor_driver.measure().await?;
             let current = transform.phases_to_stator(currents);
-            let voltage = transform.phases_to_stator(voltages);
+            let voltage = transform.phases_to_stator(voltages - Vector::fill(voltages.sum()/3.));
             
             // estimate impedance
             // difference between end and start of buffer
             let dcurrent = current - bcurrent.push(current);
-            let dvoltage = voltage - bvoltage.push(current);
+            let dvoltage = voltage - bvoltage.push(voltage);
             // integrate difference
             icurrent += dcurrent;
             ivoltage += dvoltage;
@@ -319,7 +322,7 @@ where
                 );
             let solution = regression.solution();
             let resistance = solution[(0,0)];
-            let inductance = solution[(1,0)] * period;
+            let inductance = - solution[(1,0)] * period;
             
             // exchanges
             let mut buffer = self.slave.lock().await;
@@ -334,7 +337,10 @@ where
             match self.mode {
             Mode::CalibrateImpedance => {
                 // generate noise
-                let target_voltage = voltage + Vector::from(core::array::from_fn(|_| amplitude * rng.sample::<Float, _>(StandardUniform)));
+                let target_voltage = voltage + Vector::from(core::array::from_fn(|_| {
+                    let x = rng.sample::<Float, _>(StandardUniform) *2. - 1.;
+                    amplitude * (x*x*x)
+                    }));
                 let modulations = clamp_voltage(
                     transform.stator_to_phases(target_voltage) / self.power_voltage, 
                     (0., limit / self.power_voltage));
@@ -350,7 +356,7 @@ where
         self.status.set_calibrated(false);
         self.slave.lock().await.set(registers::current::STATUS, self.status);
 
-        let voltage = (self.motor.rated_current * self.motor.phase_resistance).min(self.power_voltage);
+        let voltage = (self.motor.rated_current * self.motor.phase_resistance).min(self.power_voltage * SpaceVectorTransform::<PHASES>::space_range());
         let rotations = 1.;
         let velocity = 0.5; // rotation/s
 

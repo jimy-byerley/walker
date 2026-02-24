@@ -87,10 +87,11 @@ where PWM: PwmPeripheral + 'd,
         self.voltage_estimation = modulations * self.modulation_to_voltage;
     }
     pub fn disable(&mut self) {
-        self.modulate(Vector::fill(0.)); // TODO remove this when power_enable is fixed
         self.power_enable.set_low();
         self.current_estimation = Vector::zero();
         self.voltage_estimation = Vector::zero();
+        // TODO remove when disable is fixed
+        self.modulate(Vector::zero());
     }
 }
 
@@ -178,16 +179,13 @@ where
     
     /// measure the given amount of current samples on all pins and return the average
     async fn current_samples(&mut self, samples: u16) -> Vector<Float, 2> {   
-        let max_adc_value = (1<<12) -1; // adc precision is 12 bit
+        let max_adc_value: u16 = (1<<12) -1; // adc precision is 12 bit
         
         let mut i = Vector::<Float, 2>::zero();
         for _ in 0 .. samples {
-            let i0 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap();
-            let i1 = nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap();
-
             i += Vector::from([
-                max_adc_value - i0, 
-                max_adc_value - i1,
+                nb_task!(self.adc.read_oneshot(&mut self.current_pins.0)).await.unwrap(), 
+                nb_task!(self.adc.read_oneshot(&mut self.current_pins.1)).await.unwrap(),
                 ]).map(Float::from);
         }
         i / (Float::from(samples) * Float::from(max_adc_value))
@@ -210,13 +208,15 @@ where
     }
     pub fn modulate(&mut self, modulations: Vector<Float, PHASES>) {
         self.power_enable.set_high();
-        self.power_pins.0.set_timestamp((modulations[0] * Float::from(self.power_pins.0.period())).round() as _);
-        self.power_pins.1.set_timestamp((modulations[1] * Float::from(self.power_pins.1.period())).round() as _);
-        self.power_pins.2.set_timestamp((modulations[2] * Float::from(self.power_pins.2.period())).round() as _);
+        self.power_pins.0.set_timestamp((modulations[0] * Float::from(self.power_pins.0.period()-1)).round() as _);
+        self.power_pins.1.set_timestamp((modulations[1] * Float::from(self.power_pins.1.period()-1)).round() as _);
+        self.power_pins.2.set_timestamp((modulations[2] * Float::from(self.power_pins.2.period()-1)).round() as _);
         self.voltage_estimation = modulations * self.modulation_to_voltage;
     }
     pub fn disable(&mut self) {
         self.power_enable.set_low();
         self.voltage_estimation = Vector::zero();
+        // TODO remove when disable is fixed
+        self.modulate(Vector::zero());
     }
 }

@@ -17,8 +17,9 @@ pub mod current {
     pub const CURRENTS: SlaveRegister<Phases> = Register::new(0x510);
     pub const VOLTAGES: SlaveRegister<Phases> = Register::new(0x516);
     
-    pub const RESISTANCE: SlaveRegister<f32> = Register::new(0x51a);
-    pub const INDUCTANCE: SlaveRegister<f32> = Register::new(0x51d);
+    pub const RESISTANCE: SlaveRegister<f32> = Register::new(0x520);
+    pub const INDUCTANCE: SlaveRegister<f32> = Register::new(0x524);
+    pub const FORCE_DEMAND: SlaveRegister<f32> = Register::new(0x528);
 }
 /// target and settings for control loop
 pub mod target {

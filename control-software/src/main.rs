@@ -26,18 +26,25 @@ async fn main() -> Result<(), Error> {
             .register(slave.address(), registers::current::POSITION)
             .register(slave.address(), registers::current::VELOCITY)
             .register(slave.address(), registers::current::FORCE)
+            
             .register(slave.address(), registers::current::CURRENTS)
             .register(slave.address(), registers::current::VOLTAGES)
             
-            .register(slave.address(), registers::timing::PERIOD)
-            .register(slave.address(), registers::timing::MEASURE)
-            .register(slave.address(), registers::timing::PROCESS)
+            .register(slave.address(), registers::current::FORCE_DEMAND)
+            
+//             .register(slave.address(), registers::current::RESISTANCE)
+//             .register(slave.address(), registers::current::INDUCTANCE)
+            
+//             .register(slave.address(), registers::timing::PERIOD)
+//             .register(slave.address(), registers::timing::MEASURE)
+//             .register(slave.address(), registers::timing::PROCESS)
             .build();
         
         mapping.configure(&slave).await.unwrap();
         
         let control = async {
             println!("calibrate");
+//             calibrate_impedance(&slave).await?;
             calibrate_offset(&slave).await?;
 //             println!("apply constant force");
 //             constant_force(&slave).await?;
@@ -59,12 +66,18 @@ async fn main() -> Result<(), Error> {
                 rr.log("position", &rerun::Scalars::single(data.position)).unwrap();
                 rr.log("velocity", &rerun::Scalars::single(data.velocity)).unwrap();
                 rr.log("force", &rerun::Scalars::single(data.force)).unwrap();
+                
                 rr.log("currents", &rerun::Scalars::new(data.currents.phases.into_iter().map(|x| f32::from(x) * registers::CURRENT_UNIT))).unwrap();
                 rr.log("voltages", &rerun::Scalars::new(data.voltages.phases.into_iter().map(|x| f32::from(x) * registers::VOLTAGE_UNIT))).unwrap();
                 
-                rr.log("timing/period", &rerun::Scalars::single(data.duration_period)).unwrap();
-                rr.log("timing/measure", &rerun::Scalars::single(data.duration_measure)).unwrap();
-                rr.log("timing/process", &rerun::Scalars::single(data.duration_process)).unwrap();
+                rr.log("force_demand", &rerun::Scalars::single(data.force_demand)).unwrap();
+                
+//                 rr.log("resistance", &rerun::Scalars::single(data.resistance)).unwrap();
+//                 rr.log("inductance", &rerun::Scalars::single(data.inductance)).unwrap();
+                
+//                 rr.log("timing/period", &rerun::Scalars::single(data.duration_period)).unwrap();
+//                 rr.log("timing/measure", &rerun::Scalars::single(data.duration_measure)).unwrap();
+//                 rr.log("timing/process", &rerun::Scalars::single(data.duration_process)).unwrap();
             }
         };
         (control, monitor).race().await
@@ -81,17 +94,27 @@ struct State {
     position: f32,
     velocity: f32,
     force: f32,
+    
     currents: registers::Phases,
     voltages: registers::Phases,
-    duration_period: f32,
-    duration_measure: f32,
-    duration_process: f32,
+    
+    force_demand: f32,
+    
+//     resistance: f32,
+//     inductance: f32,
+    
+//     duration_period: f32,
+//     duration_measure: f32,
+//     duration_process: f32,
 }
 
 
-// async fn calibrate_impedance(slave: &Slave<'_>) -> Result<(), Error> {
-//     slave.write(registers::target::MODE, registers::Mode::CalibrateImpedance).await?.one()?;
-// }
+async fn calibrate_impedance(slave: &Slave<'_>) -> Result<(), Error> {
+    slave.write(registers::target::MODE, registers::Mode::CalibrateImpedance).await?.one()?;
+    tokio::time::sleep(Duration::from_secs(35)).await;
+    slave.write(registers::target::MODE, registers::Mode::Off).await?.one()?;
+    Ok(())
+}
 
 async fn calibrate_offset(slave: &Slave<'_>) -> Result<(), Error> {
     slave.write(registers::target::MODE, registers::Mode::CalibrateFocContinuous).await?.one()?;
@@ -114,9 +137,9 @@ async fn calibrate_offset(slave: &Slave<'_>) -> Result<(), Error> {
 }
 
 async fn infinite_sine(slave: &Slave<'_>, rr: &rerun::RecordingStream) -> Result<(), Error> {
-    let gain_position = 10.;
-    let gain_velocity = 10.;
-    let inertia = 0.01;
+    let gain_position = 20.;
+    let gain_velocity = 20.;
+    let inertia = 0.2;
     let rated_force = slave.read(registers::typical::RATED_FORCE).await?.one()?;
     
     slave.write(registers::target::LIMIT_POSITION, registers::Range {start: -0.5, stop: 0.5}).await?.one()?;
@@ -142,7 +165,7 @@ async fn infinite_sine(slave: &Slave<'_>, rr: &rerun::RecordingStream) -> Result
         let dt = 1e-3;
         let target_position = trajectory(t);
         let target_velocity = (trajectory(t + dt) - target_position) / dt;
-        dbg!(target_position);
+        
         slave.write(registers::target::FORCE, 
             target_position * gain_position * gain_velocity * inertia
             + target_velocity * gain_velocity * inertia).await?.one()?;

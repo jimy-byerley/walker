@@ -212,6 +212,11 @@ impl<const N: usize> SpaceVectorTransform<N> {
     pub fn stator_to_phases(&self, field: Vector<Float, 2>) -> Vector<Float, N> {
         self.stator_to_phases.dot(field)
     }
+    /// size of the range in space (stator or rotor) reached by units vectors in phases
+    pub fn space_range() -> Float {
+        let n = N as Float;
+        ((n / 4.).round() / n * 2. * Float::PI()).sin()
+    }
 }
 
 /// if voltage out of bounds, center it to reduce saturations, then saturate
