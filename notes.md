@@ -157,6 +157,10 @@ donc moteur synchrone.
 
 - driver simple [stepperonline](https://www.omc-stepperonline.com/fr/controleur-de-moteur-cc-sans-balais-numerique-12v-48vdc-max-15-0a-400w-bld-510b)
 
+## controleur
+
+- [esp32-lite](https://www.espboards.dev/esp32/esp32-lite-v1/)
+
 ## capteur de position
 
 - capteur absolu sur arbre de sortie
@@ -277,12 +281,12 @@ motor phases
 
 Assuming a simple coil
 $$
-u,i \in \R, ~~~ u = R i + L \derive[]t i = \mat{i & \derive[]t i} \mat{R \\ L} \\
+u,i \in \R, ~~~ u = R i - L \derive[]t i = \mat{i & \derive[]t i} \mat{R \\ -L} \\
 $$
 To avoid estimating $\derive[]t i$ we can integrate it, and to be more robust to measurement noise, lets do it on $n$ periods of duration $T$
 $$
-\int_0^t u(t) dt = R \int_0^t i(t) dt + L [i(t)]_0^t \\
-T \sum_0^n u_k = R T \sum_0^n i_k + L (i_{n+1} - i_{0}) \\
+\int_0^t u(t) dt = R \int_0^t i(t) dt - L [i(t)]_0^t \\
+T \sum_0^n u_k = R T \sum_0^n i_k - L (i_{n+1} - i_{0}) \\
 $$
 Each line $U_j, I_j$ above can be computed using rolling summation
 
@@ -290,7 +294,7 @@ Each line $U_j, I_j$ above can be computed using rolling summation
 
 This gives us a linear system, best estimation of $Z$ is given by a moore-penrose pseudo inverse:
 $$
-U = \mat{\sum_j^{j+n} u_k}_j = \mat{\sum_j^{j+n} i_k & i_{j+n+1} - i_j}_j \mat{R \\ {L \over T}} = I Z \\
+U = \mat{\sum_j^{j+n} u_k}_j = \mat{\sum_j^{j+n} i_k & i_{j+n+1} - i_j}_j \mat{R \\ -{L \over T}} = I Z \\
 U = I Z ~~\implies I^T U = I^T I Z ~~\implies Z = (I^T I)^{-1} I^T U
 $$
 If the sampling is long, the above computation can take time, so lets splot its costly matrix products to get sums that can be implemented using rolling summation
