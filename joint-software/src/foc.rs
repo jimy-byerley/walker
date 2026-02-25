@@ -241,10 +241,29 @@ pub fn soft_command_limit(command: Float, limited: Float, limit: (Float, Float),
 }
 
 
-// pub struct LowPassFilter<T, const ORDER: usize> {
-//     rate: Float,
-//     value: [T; ORDER+1],
-// }
+pub struct LowPassFilter<T, const ORDER: usize> {
+    rate: Float,
+    orders: [T; ORDER],
+}
+impl<T: Add<Output=T> + Mul<Float, Output=T> + Copy + Default, const ORDER: usize> LowPassFilter<T, ORDER> {
+    pub fn discrete(rate: Float) -> Self {
+        Self {
+            rate,
+            orders: [T::default(); _],
+        }
+    }
+    pub fn continuous(period: Float, frequency: Float) -> Self {
+        Self::discrete(continuous_to_discrete_filter(period, frequency))
+    }
+    pub fn step(&mut self, mut value: T) -> T {
+        for i in 0 .. self.orders.len() {
+            self.orders[i] = lerp(self.orders[i], value, self.rate);
+            value = self.orders[i];
+        }
+        value
+    }
+}
+
 
 // pub struct Impedance {
 //     pub resistance: Float,
