@@ -9,12 +9,12 @@ import sensors
 
 
 
-def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20, nteeth=60):
+def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20, nteeth=60, details=False):
 	gearbox = strainwave_dual_crown(
 			rext = rext,
 			nteeth = nteeth,
 			guided = True,
-			details = True,
+			details = details,
 			)
 	dim = next(dim  for dim, spec in reversed(nema.rounds.items()) if spec.width < gearbox.hole*2)
 	motor = nema.motor(dim, motor_length, motor_dshaft, motor_lshaft, round=True, coupling='flat')
@@ -136,18 +136,19 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 		filet(profile, [1], width=dscrew)
 		hat = revolution(profile)
 		hat.mergeclose()
+
+		if details:		
+			screwing = circular_screwing(
+				gearbox.shell.input.perimeter.axis,
+				gearbox.shell.input.perimeter.radius,
+				height = dscrew,
+				dscrew = dscrew,
+				div = 4,
+				screws = True,
+				)
+	
+			holes = inflate(extrusion(web(rotor_encoder.holes), 3*thickness*Z, alignment=0.5), -0.2) .flip() .transform(rotor_encoder.pose)
 		
-		screwing = circular_screwing(
-			gearbox.shell.input.perimeter.axis,
-			gearbox.shell.input.perimeter.radius,
-			height = dscrew,
-			dscrew = dscrew,
-			div = 4,
-			screws = True,
-			)
-		hat_body = intersection(hat, screwing.holes)
-		
-		holes = inflate(extrusion(web(rotor_encoder.holes), 3*thickness*Z, alignment=0.5), -0.2) .flip() .transform(rotor_encoder.pose)
 		cables_way = extrusion(rotor_encoder.connections.group(1), gearbox.rext*Y) .transform(rotor_encoder.pose)
 		cables = rotor_encoder.connections.box()
 		support = gearbox.shell.input.perimeter.center + gearbox.shell.input.height*Z
@@ -161,15 +162,22 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 		#filet(cables_way, cables_way.frontiers(1,5,4), width=cables.size.z)
 		cables_guide = inflate(cables_way.flip(), thickness)
 		epsilon = 1e-1
-		guide = intersection(cables_guide, inflate(expand(hat_body.group((6,5,4,3)), 10), -epsilon))
-		hat_body = intersection(union(hat_body, guide), cables_way + holes)
+		guide = intersection(cables_guide, inflate(expand(hat.group((6,5,4,3)), 10), -epsilon))
+
+		if details:
+			hat_body = intersection(union(hat, guide), cables_way + holes + screwing.holes)
 		
-		return Solid(
-			body = hat_body.finish(),
-			screws = screwing.screws,
-			sensor = rotor_encoder,
-			)
-	
+			return Solid(
+				body = hat_body.finish(),
+				screws = screwing.screws,
+				sensor = rotor_encoder,
+				)
+		else:
+			hat_body = intersection(union(hat, guide), cables_way)
+			return Solid(
+				body = hat_body.finish(),
+				)
+		
 	
 	def build_stator():
 		bottom = motor.pose * (motor.length*-Z)
@@ -179,15 +187,6 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 		offset = motor.interface.width*0.04
 		epsilon = 1e-1
 		overinterface = gearbox.output.perimeter.center - thickness*2*Z
-		jaw = parallelogram(
-			(motor.interface.width + offset*2)*X, 
-			motor.interface.width*0.2*Y, 
-			origin = bottom - epsilon*Z, 
-			alignment = 0.5,
-			fill = False,
-			).flip()
-		filet(jaw, jaw.frontiers(), width=2*offset)
-		jaws = repeataround(extrusion(jaw, gearbox.output.perimeter.center - bottom + 2*epsilon), 3, angle=pi)
 		body = revolution(wire([
 			gearbox.output.perimeter.center + motor.interface.width/2*X + overlap*X,
 			bottom + motor.interface.width/2*X - overlap*X,
@@ -198,7 +197,6 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 			gearbox.output.perimeter.center + gearbox.output.perimeter.radius*X + gearbox.output.diameters[0]*1.5*X,
 			gearbox.output.perimeter.center + gearbox.output.perimeter.radius*X - gearbox.output.diameters[0]*X,
 			]).close().segmented().flip())
-		filet(body, body.frontiers(0,6), width=2*offset)
 		screwing = circular_screwing(
 			Axis(overinterface, Z), 
 			gearbox.output.perimeter.radius,
@@ -207,25 +205,45 @@ def joint(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20
 	#		diameters = len(gearbox.output.diameters),
 			expand = False,
 			nuts = True,
-			hold = thickness*2,
+			hold = thickness*2 * details,
 			)
-		stator_coupling = intersection(body, jaws + screwing.holes)
+		if details:
+			jaw = parallelogram(
+				(motor.interface.width + offset*2)*X, 
+				motor.interface.width*0.2*Y, 
+				origin = bottom - epsilon*Z, 
+				alignment = 0.5,
+				fill = False,
+				).flip()
+			filet(jaw, jaw.frontiers(), width=2*offset)
+			jaws = repeataround(extrusion(jaw, gearbox.output.perimeter.center - bottom + 2*epsilon), 3, angle=pi)
+			filet(body, body.frontiers(0,6), width=2*offset)
+			stator_coupling = intersection(body, jaws + screwing.holes)
+		else:
+			stator_coupling = intersection(body, screwing.holes)
 	
 		return Solid(body=stator_coupling.finish())
 	
-	return Solid(
-		motor = motor,
-		gearbox = gearbox,
-		rotor = build_rotor(),
-		hat = build_hat(),
-		stator = build_stator(),
-		)
+	if details:
+		return Solid(
+			motor = motor,
+			gearbox = gearbox,
+			rotor = build_rotor(),
+			hat = build_hat(),
+			stator = build_stator(),
+			)
+	else:
+		return Solid(
+			gearbox = gearbox,
+			hat = build_hat(),
+			stator = build_stator(),
+			)
 
 
 if __name__ == '__madcad__':
-#	settings.resolution = ('sqradm', 0.8)
-	settings.resolution = ('sqradm', 0.3)
+	settings.resolution = ('sqradm', 0.8)
+#	settings.resolution = ('sqradm', 0.3)
 	
-	j = joint(rext=50, motor_length=73)
+	j = joint_innermotor(rext=50, motor_length=73, details=True)
 #	export(j, f"{__file__}/../out/joint-v1.4", (j.gearbox.rext, j.gearbox.height, round(j.motor.length)))
 	
