@@ -34,6 +34,8 @@ def circular_screwing(axis, radius, height, dscrew, diameters:int=1, div:int=8, 
 	gap = 0.1*dscrew*z
 	enlarge = 1.05
 	diameters_list = []
+#	if dscrew*2 > radius*cos(pi/div):
+#		hole = screw_slot(Axis(O,z), dscrew,
 	for i in range(diameters):
 		d = enlarge*stfloor(0.8**i * dscrew)
 		diameters_list.append(d)
@@ -157,7 +159,7 @@ def references(
 	return Solid(**vars())
 
 
-def joint_slot(interface):
+def joint_outer_slot(interface):
 	play = 0.1
 	x,y,z = dirbase(-interface.perimeter.axis.direction)
 	hole = revolution(wire([
@@ -179,6 +181,104 @@ def joint_slot(interface):
 			expand = 2*interface.diameters[0],
 			)
 	return intersection(hole, screwing)
+
+def joint_inner_slot(interface):
+	play = 0.1
+	x,y,z = dirbase(-interface.perimeter.axis.direction)
+#	screwing = circular_screwing(interface.perimeter.axis, interface.perimeter.radius, interface.height, stfloor(interface.diameters[0], 0.3))
+	screwing = Mesh()
+	for p in regon(interface.perimeter.axis.offset(-interface.dscrew), interface.perimeter.radius, interface.div).points:
+		screwing += screw_slot(
+			Axis(p, -interface.perimeter.axis.direction), 
+			dscrew = interface.dscrew, 
+			rslot = 1.3*interface.dscrew, 
+			hole = interface.height, 
+			expand = interface.height + interface.dscrew,
+			)
+	return screwing.transform(interface.pose)
+
+def gearbox_clearance(interface, max_radius=0):
+	x,y,z = dirbase(interface.perimeter.axis.direction)
+	clearance = wire([
+		interface.perimeter.center - max(max_radius, interface.perimeter.radius + interface.dscrew*6)*x + interface.perimeter.radius*2*z,
+		interface.perimeter.center - (interface.perimeter.radius + interface.dscrew*6)*x,
+		interface.perimeter.center,
+		])
+	filet(clearance, [1], width=interface.dscrew*2)
+	return revolution(clearance).transform(interface.pose).finish().orient().flip()
+
+def shoulder_body(leg, scapula_active, scapula_passive):
+	hull = convexhull(mesh.mesh([
+		flatsurface(Circle(
+			leg.perimeter.axis.transform(leg.pose), 
+			leg.perimeter.radius + leg.dscrew*2,
+			)),
+#		cylinder(
+#			scapula_active.perimeter.axis.transform(scapula_active.pose).origin,
+#			scapula_active.perimeter.axis.transform(scapula_active.pose).offset(-scapula_active.dscrew).origin,
+#			scapula_active.perimeter.radius + scapula_active.dscrew*1.5,
+#			),
+		flatsurface(Circle(
+			scapula_active.perimeter.axis.transform(scapula_active.pose),
+			scapula_active.perimeter.radius + scapula_active.dscrew*1.6,
+			)),
+		flatsurface(Circle(
+			scapula_passive.perimeter.axis.transform(scapula_passive.pose),
+			scapula_passive.perimeter.radius + scapula_passive.dscrew*1.6,
+			)),
+#			icosphere(
+#				mix(
+#					scapula_passive.perimeter.axis.transform(scapula_passive.pose).origin,
+#					scapula_active.perimeter.axis.transform(scapula_active.pose).origin,
+#					0.7,
+#					),
+#				leg.perimeter.radius*1.3,
+#				),
+		]))
+	offset = dot(
+		scapula_active.perimeter.axis.transform(scapula_active.pose).origin 
+		- leg.perimeter.axis.transform(leg.pose).origin,
+		Y)
+	overall = intersection(hull, 
+		gearbox_clearance(scapula_active, offset - leg.dscrew)
+		+ gearbox_clearance(scapula_passive, offset - leg.dscrew),
+		)
+	body = intersection(overall,
+#		joint_inner_slot(scapula_active)
+		joint_inner_slot(leg)
+#		+ joint_inner_slot(leg).transform(rotatearound(pi/8, leg.perimeter.axis.transform(leg.pose))),
+		)
+	width = distance(
+		scapula_active.pose * scapula_active.perimeter.center,
+		scapula_passive.pose * scapula_passive.perimeter.center,
+		)/2
+	c1 = convexhull(mesh.mesh([
+		cylinder(
+			leg.perimeter.axis.transform(leg.pose).offset(-width).origin -leg.perimeter.radius*2*Z,
+			leg.perimeter.axis.transform(leg.pose).offset(-width).origin +leg.perimeter.radius*2*Z,
+			width -leg.dscrew,
+			),
+		cylinder(
+			leg.perimeter.axis.transform(leg.pose).offset(-width-leg.height).origin -leg.perimeter.radius*2*Z,
+			leg.perimeter.axis.transform(leg.pose).offset(-width-leg.height).origin +leg.perimeter.radius*2*Z,
+			width -leg.dscrew,
+			),
+		]))
+	c2 = convexhull(mesh.mesh([
+		cylinder(
+			leg.perimeter.axis.transform(leg.pose).offset(-width*3-leg.height).origin -leg.perimeter.radius*2*Z,
+			leg.perimeter.axis.transform(leg.pose).offset(-width*3-leg.height).origin +leg.perimeter.radius*2*Z,
+			width -leg.dscrew,
+			),
+		cylinder(
+			leg.perimeter.axis.transform(leg.pose).offset(-width*5).origin -leg.perimeter.radius*2*Z,
+			leg.perimeter.axis.transform(leg.pose).offset(-width*5).origin +leg.perimeter.radius*2*Z,
+			width -leg.dscrew,
+			),
+		]))
+	
+	body = intersection(body, (c1 + c2).flip())
+	return body
 
 def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 	left = convexoutline(web([
@@ -218,15 +318,15 @@ def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 		).orient().flip())
 	body1 = intersection(
 		body, 
-		joint_slot(shoulder.output)
+		joint_outer_slot(shoulder.output)
 			.transform(rotatearound(pi/8, shoulder.output.perimeter.axis))
 			.transform(shoulder.pose)
 		)
-	body2 = intersection(body1, joint_slot(passive1).transform(passive1.pose))
-	body3 = intersection(body2, joint_slot(passive2).transform(passive2.pose))
+	body2 = intersection(body1, joint_outer_slot(passive1).transform(passive1.pose))
+	body3 = intersection(body2, joint_outer_slot(passive2).transform(passive2.pose))
 	body4 = intersection(
 		body3,
-		joint_slot(gearbox.output)
+		joint_outer_slot(gearbox.output)
 			.transform(rotatearound(pi/8, gearbox.output.perimeter.axis))
 			.transform(gearbox.pose),
 		)
@@ -284,7 +384,7 @@ def foreleg_body(refs, leading, edge1, edge2, foot):
 	r = leading.perimeter.radius
 	body1 = intersection(
 			body,
-			joint_slot(leading).transform(leading.pose)
+			joint_outer_slot(leading).transform(leading.pose)
 			+ extrusion(
 				Circle(Axis(mix(refs.foot_center, refs.foreknee, 0.55), Y), r*0.3),
 				r*3*Y, alignment=0.5,
@@ -294,8 +394,8 @@ def foreleg_body(refs, leading, edge1, edge2, foot):
 				r*3*Y, alignment=0.5,
 				).flip()
 			)
-	body2 = intersection(body1, joint_slot(edge1).transform(edge1.pose))
-	body3 = intersection(body2, joint_slot(edge2).transform(edge2.pose))
+	body2 = intersection(body1, joint_outer_slot(edge1).transform(edge1.pose))
+	body3 = intersection(body2, joint_outer_slot(edge2).transform(edge2.pose))
 
 	return Solid(
 		body = body3.finish(),
@@ -455,9 +555,10 @@ def assemble(refs):
 			passive = scapula.passive.deloc('outer'),
 			),
 		'shoulder': Solid(
-			shoulder = shoulder.gearbox.deloc('output'),
+			leg = shoulder.gearbox.deloc('output'),
 			scapula = scapula.gearbox.deloc('output'),
 			passive = scapula.passive.deloc('inner'),
+			body = shoulder_body(shoulder.deloc('gearbox', 'output'), scapula.deloc('gearbox', 'output'), scapula.deloc('passive', 'inner')),
 			),
 		'backleg': backleg,
 		'foreleg': foreleg,
@@ -484,8 +585,8 @@ settings.resolution = ('sqradm', 1.)
 refs = references(
 	leg_length = 550,
 	backleg_length = 165,
-	offset_scapula = 20,
-	offset_shoulder = 58,
+	offset_scapula = 16,
+	offset_shoulder = 65,
 	offset_traverse = 60,
 	foot_clearance = 60,
 	gearbox_shoulder = 50,
