@@ -45,19 +45,26 @@ def export(model, path, dimensions):
 		memo[id(model)] = path
 		# print('write', repr(model))
 		if isinstance(model, Mesh):
+			# if model.isenvelope():
 			os.makedirs(os.path.abspath(path+'/..'), exist_ok=True)
 			filename = '{}.stl'.format(path)
 			print('exporting', filename)
 			io.write(model, filename)
+			# else:
+				# print('skipping incomplete', path)
 		elif isinstance(model, (Solid, dict)):
 			for key, value in model.items():
 				write(value, '{}/{}'.format(path, key))
 		elif isinstance(model, (list, tuple)):
 			for key, value in enumerate(model):
 				write(value, '{}/{}'.format(path, key))
+		elif isinstance(model, (Kinematic, Chain)):
+			for key, value in model.content.items():
+				write(value, '{}/{}'.format(path, key))
 	
 	remove(folder)
 	count(model)
+	os.makedirs(folder, exist_ok=True)
 	write(model, folder)
 	
 	bom = open('{}/bom.csv'.format(folder), 'w')

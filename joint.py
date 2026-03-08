@@ -1,3 +1,4 @@
+from copy import copy
 from madcad import *
 from madcad.joints import *
 from madcad.scheme import *
@@ -18,8 +19,10 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 			)
 	dim = next(dim  for dim, spec in reversed(nema.rounds.items()) if spec.width < gearbox.hole*2)
 	motor = nema.motor(dim, motor_length, motor_dshaft, motor_lshaft, round=True, coupling='flat')
-	absolute_encoder = ( sensors.sensor_color()
-			.transform(translate(gearbox.rext*Y - 8*Z) * rotate(pi*0.6, X)) )
+	absolute_encoder1 = ( sensors.sensor_color()
+			.transform(rotate(pi/8, Z) * translate(gearbox.rext*1.05*Y - 8*Z) * rotate(pi*0.65, X)) )
+	absolute_encoder2 = ( sensors.sensor_color()
+			.transform(rotate(pi/8, Z) * translate(gearbox.rext*1.*Y - 15*Z) * rotate(pi*0.55, X)) )
 	rotor_encoder = sensors.sensor_magnetic()
 	magnet = sensors.magnet_square(10, 5)
 	
@@ -31,7 +34,7 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 	motor = motor.place((Revolute, Axis(motor.lshaft*Z, Z), Axis(rotor_top, Z)))
 	rotor_encoder = ( rotor_encoder
 		.place((Revolute, Axis(O,-Z), Axis(rotor_top + rotor_encoder_clearance*Z, Z)))
-		.transform(rotate(pi/4, Z)) )
+		.transform(rotate(pi/8, Z)) )
 	
 	magnets = [
 		magnet.transform(translate(rotor_top - magnet.width/2*Z + (magnet_spacing+magnet.height/2)*Y) * rotate(pi/4, X) ),
@@ -223,27 +226,90 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 			stator_coupling = intersection(body, screwing.holes)
 	
 		return Solid(body=stator_coupling.finish())
+
+	def rework_shell():
+		shell = gearbox.shell
+		play = 0.5
+		thickness = 2
+		depth = 4
+		d = normalize(noproject(mat3(absolute_encoder2.pose) * Z, Z))
+		w = absolute_encoder2.width
+
+		if details:
+			hat = shell.hat
+		else:
+			hat = shell.body
+		holds = convexhull(inflate(absolute_encoder2.deloc('board'), play)).flip()
+		outline = flatsurface(absolute_encoder2.deloc('outline'))
+		top_selection = {6,7,8,9,10}
+		top = union(
+			hat.group(top_selection), 
+			inflate(extrusion(outline, 1.7*shell.output.dscrew*d).orient(), thickness),
+			)
+#		outline = absolute_encoder2.deloc('outline')
+#		exterior = inflate(extrusion(flatsurface(union(
+#			web(outline).flip(),
+#			parallelogram(0.6*w*X, gearbox.height*2*Y, alignment=vec3(0.5, -0.1, 0), fill=False).transform(absolute_encoder2.pose),
+#			)), 1.7*shell.output.dscrew*d).orient(), thickness)
+#		top = union(
+#			shell.hat.group(top_selection), 
+#			exterior,
+#			)
+		hat = hat.own(faces=True, tracks=True, groups=True).replace(top, top_selection)
+
+		if details:
+			encoder_area = inflate(extrusion(outline, depth*d).orient(), play)
+			wire_way = parallelogram(0.7*w*X, 3*w*Y, depth*0.7*Z, alignment=vec3(0.5, 0, -0.3)).transform(absolute_encoder2.pose)
+			light_way = cylinder(
+				absolute_encoder2.pose * (w*0.5*Y + w*0.1*X), 
+				absolute_encoder2.pose * (w*0.5*Y + w*0.1*X + 3*depth*Z), 
+				w*0.25)
+			hat = intersection(
+				hat, 
+				union(
+					encoder_area,
+					light_way + wire_way,
+					).flip(),
+				)
+		
+			mid = intersection(shell.mid, holds)
+
+			return gearbox.shell.update(
+				hat = hat,
+				mid = mid,
+				sensor = absolute_encoder2,
+				)
+		else:
+			return gearbox.shell.update(body = hat)
 	
 	if details:
 		return Solid(
+			rext = gearbox.rext,
+			height = gearbox.height,
 			motor = motor,
-			gearbox = gearbox,
+#			gearbox = gearbox,
+			input = gearbox.input,
+			output = gearbox.output,
+			shell = rework_shell(),
 			rotor = build_rotor(),
 			hat = build_hat(),
 			stator = build_stator(),
 			)
 	else:
 		return Solid(
-			gearbox = gearbox,
+			rext = gearbox.rext,
+			height = gearbox.height,
+			output = gearbox.output,
+			shell = rework_shell(),
 			hat = build_hat(),
 			stator = build_stator(),
 			)
 
 
 if __name__ == '__madcad__':
-	settings.resolution = ('sqradm', 0.8)
-#	settings.resolution = ('sqradm', 0.3)
+#	settings.resolution = ('sqradm', 0.8)
+	settings.resolution = ('sqradm', 0.3)
 	
-	j = joint_innermotor(rext=50, motor_length=73, details=True)
-#	export(j, f"{__file__}/../out/joint-v1.4", (j.gearbox.rext, j.gearbox.height, round(j.motor.length)))
+	j = joint_innermotor(rext=50, motor_length=73, details=False)
+#	export(j, f"{__file__}/../out/joint-v1.5", (j.rext, j.height, round(j.motor.length)))
 	

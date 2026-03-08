@@ -11,6 +11,7 @@ import os
 sys.path.append(os.path.abspath(__file__+'/..'))
 
 
+from utils import export
 from joint import joint_innermotor
 from gearbox.strainwave import strainwave_dual_crown, circular_screwing
 
@@ -57,7 +58,7 @@ def screw_slot(axis: Axis, dscrew: float, rslot=None, hole=0., screw=0., expand=
 		profile.append(o - (hole+screw+0.4*dscrew)*z)
 	else:
 		profile.append(o)
-	return revolution(wire(profile).segmented(), Axis(o,-z)).finish()
+	return revolution(wire(profile), Axis(o,-z)).finish()
 
 
 def hemisphere(axis: Axis, radius: float) -> Mesh:
@@ -72,9 +73,9 @@ def link_inner(base, tip):
 
 	# main shape determined by the interfaces to be attached
 	raw = convexhull(mesh.mesh([
-		hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*2.5).transform(base.pose),
+		hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*3).transform(base.pose),
 #		hemisphere(tip.perimeter.axis.flip(), tip.perimeter.radius + tip.dscrew*3).transform(tip.pose),
-		cylinder(tip.perimeter.center, tip.perimeter.axis.offset(-tip.dscrew*hole_factor*2).origin, tip.perimeter.radius + tip.dscrew*2.5).transform(tip.pose),
+		cylinder(tip.perimeter.center, tip.perimeter.axis.offset(-tip.dscrew*hole_factor*2.2).origin, tip.perimeter.radius + tip.dscrew*2.5).transform(tip.pose),
 		])).mergegroups()
 	# leave space for interfaces
 	profile = wire([
@@ -98,7 +99,7 @@ def link_inner(base, tip):
 			base.perimeter.radius - base.dscrew*2),
 		Circle(
 			Axis(
-				tip.pose * tip.perimeter.axis.offset(-base.perimeter.radius*0.6-tip.dscrew*hole_factor).origin
+				tip.pose * tip.perimeter.axis.offset(-base.perimeter.radius*0.6-tip.dscrew*hole_factor*2).origin
 				- tip.perimeter.radius*0.8 * base.perimeter.axis.direction, 
 				base.perimeter.axis.direction), 
 			base.perimeter.radius*0.4),
@@ -106,7 +107,7 @@ def link_inner(base, tip):
 		
 
 	# it is sufficient to get overall shape
-	body = intersection(intersection(intersection(raw, area_tip), area_base), removal)
+	body1 = intersection(intersection(intersection(raw, area_tip), area_base), removal)
 
 	# screws at interface
 	tip_screws_slot = repeataround(
@@ -145,31 +146,41 @@ def link_inner(base, tip):
 				)
 
 	#  gather all base screw slots
+	# TODO to this by checking intersection with the frontier rather than doing trigonometry
 	slots = []
 	points = []
+	# alignment should be pi/base.div - asin(...)
+	alignment = pi/base.div - 0.2*asin(dot(
+		tip.pose * tip.perimeter.center - base.pose * base.perimeter.center, 
+		cross(mat3(tip.pose) * tip.perimeter.axis.direction, mat3(base.pose) * base.perimeter.axis.direction),
+		)/base.perimeter.radius)
 	for a in linrange(0, 2*pi, step=2*pi/base.div, end=False):
-#		t = rotatearound(a, axis)
-		t = translate(axis.origin) * rotate(a, axis.direction) * translate(-axis.origin)
+		t = translate(axis.origin) * rotate(a + alignment, axis.direction) * translate(-axis.origin)
 		p = t * (axis.origin + base.perimeter.radius * x)
 		proj = dot(p - plane.origin, plane.direction)
 		points.append(t)
-		if proj < 0:
-			slots.append(slot_lateral.transform(t))
-		else:
+		if proj > -base.dscrew*0.2:
 			slots.append(slot_axial.transform(t))
+		else:
+			slots.append(slot_lateral.transform(t))
 	# add screw holes
-	holes = repeataround(cylinder(
-		base.perimeter.center + base.perimeter.radius*Y - base.dscrew*(hole_factor+1)*Z,
-		base.perimeter.center + base.perimeter.radius*Y + epsilon*Z,
-		base.dscrew*0.5,
-		), 
+	holes = repeataround(
+		convexhull(mesh.mesh([
+			cylinder(
+				base.perimeter.center + base.perimeter.radius*Y - base.dscrew*(hole_factor+epsilon)*Z,
+				base.perimeter.center + base.perimeter.radius*Y + epsilon*Z,
+				base.dscrew*0.5,
+				), 
+			icosphere(base.perimeter.center + base.perimeter.radius*Y - base.dscrew*(hole_factor+epsilon)*Z, base.dscrew*0.5),
+			flatsurface(Circle(Axis(base.perimeter.center + base.perimeter.radius*Y - base.dscrew*hole_factor*Y, Z), base.dscrew*0.5)),
+			])).mergegroups(),
 		axis = base.perimeter.axis, 
 		repetitions = base.div,
-		).transform(base.pose).flip()
+		).transform(rotate(alignment, Z)).transform(base.pose).flip()
 
 	base_screws_slot = intersection(holes, mesh.mesh(slots))
 
-	body = intersection(body, tip_screws_slot + base_screws_slot)
+	body = intersection(body1, tip_screws_slot + base_screws_slot)
 
 	return Solid(
 		body = body.finish().option(color=vec3(0.4, 0.1, 0.05)),
@@ -177,7 +188,7 @@ def link_inner(base, tip):
 		)
 
 def link_outer(base, tip):
-	epsilon = base.perimeter.radius*1e-3
+	epsilon = base.perimeter.radius*5e-3
 	body1 = convexhull(mesh.mesh([
 		hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*1.5).transform(base.pose),
 		hemisphere(tip.perimeter.axis.flip(), tip.perimeter.radius + tip.dscrew*1.2).transform(tip.pose),
@@ -210,8 +221,8 @@ def link_outer(base, tip):
 		axis = base.perimeter.axis,
 		).transform(base.pose * translate(base.perimeter.center)).finish()
 	profile = wire([
-			tip.perimeter.radius*X + tip.dscrew*2*X - tip.perimeter.radius*Z,
-			tip.perimeter.radius*X + tip.dscrew*2*X + epsilon*Z,
+			tip.perimeter.radius*X + tip.dscrew*3*X - tip.perimeter.radius*Z,
+			tip.perimeter.radius*X + tip.dscrew*3*X + epsilon*Z,
 			tip.perimeter.radius*X - tip.dscrew*1.2*X + epsilon*Z,
 			tip.perimeter.radius*X - tip.dscrew*1.2*X + tip.perimeter.radius*0.6*Z,
 			tip.perimeter.radius*4*Z,
@@ -226,7 +237,7 @@ def link_outer(base, tip):
 		cylinder(
 			base.perimeter.center + base.perimeter.radius*X -epsilon*Z, 
 			base.perimeter.center + base.perimeter.radius*X +base.dscrew*2.5*Z,
-			base.dscrew*0.8,
+			base.dscrew*3/5,
 			),
 		axis = base.perimeter.axis,
 		repetitions = base.div,
@@ -235,7 +246,7 @@ def link_outer(base, tip):
 		cylinder(
 			tip.perimeter.center + tip.perimeter.radius*X -epsilon*Z, 
 			tip.perimeter.center + tip.perimeter.radius*X +tip.dscrew*2.5*Z,
-			tip.dscrew*0.8,
+			tip.dscrew*3.3/5,
 			),
 		axis = tip.perimeter.axis,
 		repetitions = tip.div,
@@ -246,7 +257,7 @@ def link_outer(base, tip):
 	return Solid(body=body.finish().option(color=vec3(0.4, 0.2, 0)))
 
 
-def arm(backarm:float, forearm:float):
+def arm_repeated(backarm:float, forearm:float):
 	# select the actuators we want to create the structure around
 	actuators = Solid(
 		base = copy(strainwave_dual_crown(
@@ -287,13 +298,14 @@ def arm(backarm:float, forearm:float):
 	s = stceil(backarm * 0.1)  # shift of orthogonal gearboxes
 #	e = -0.1  # excentricity to avoid singularities
 	e = 0
-	d = backarm*0.1
+	d = backarm*0.05
+	u = backarm*0.1
 #	e = 0
 	shoulder = O
-	scapula = shoulder - actuators.shoulder.gearbox.rext*1.5*Z -s*Y -d*0.5*X
-	elbow = shoulder + backarm*Z + backarm*e*X
-	wrist = elbow + forearm*Z + forearm*e*X
-	tool = wrist + actuators.wrist.gearbox.rext*2.2*Z - forearm*e*X
+	scapula = shoulder - actuators.shoulder.rext*1.5*Z -s*Y -d*0.5*X
+	elbow = shoulder + backarm*Z + backarm*e*X +u*Y
+	wrist = elbow + forearm*Z + forearm*e*X +u*Y
+	tool = wrist + actuators.wrist.rext*2.2*Z - forearm*e*X
 	midback = mix(shoulder, elbow, 0.65) -s*Y +d*X
 	midfore = mix(elbow, wrist, 0.65) -s*Y +d*X
 
@@ -302,10 +314,10 @@ def arm(backarm:float, forearm:float):
 	actuators.midback.pose = placement((Revolute, actuators.midback.output.perimeter.axis, Axis(midback,-Z)))
 	actuators.midfore.pose = placement((Revolute, actuators.midfore.output.perimeter.axis, Axis(midfore,-Z)))
 
-	actuators.shoulder.pose = placement((Revolute, actuators.shoulder.gearbox.output.perimeter.axis, Axis(shoulder,Y)))
-	actuators.elbow.pose = placement((Revolute, actuators.elbow.gearbox.output.perimeter.axis, Axis(elbow,Y)))
-	actuators.wrist.pose = placement((Revolute, actuators.wrist.gearbox.output.perimeter.axis, Axis(wrist,Y)))
-	actuators.tool.pose = placement((Revolute, actuators.tool.gearbox.output.perimeter.axis, Axis(tool,-Z)))
+	actuators.shoulder.pose = placement((Revolute, actuators.shoulder.output.perimeter.axis, Axis(shoulder,Y)))
+	actuators.elbow.pose = placement((Revolute, actuators.elbow.output.perimeter.axis, Axis(elbow,Y)))
+	actuators.wrist.pose = placement((Revolute, actuators.wrist.output.perimeter.axis, Axis(wrist,Y)))
+	actuators.tool.pose = placement((Revolute, actuators.tool.output.perimeter.axis, Axis(tool,-Z)))
 
 	kinematic = Kinematic([
 		Revolute(('base', 'shoulder'), Axis(scapula,Z)),
@@ -321,13 +333,13 @@ def arm(backarm:float, forearm:float):
 			joint = actuators.shoulder, 
 			body = link_inner(
 				actuators.base.deloc('output'), 
-				actuators.shoulder.deloc('gearbox', 'output'),
+				actuators.shoulder.deloc('output'),
 				),
 			),
 		'back_back': Solid(
 			joint = actuators.midback,
 			body = link_outer(
-				actuators.shoulder.deloc('gearbox', 'shell', 'output'), 
+				actuators.shoulder.deloc('shell', 'output'), 
 				actuators.midback.deloc('shell', 'output'),
 				),
 			),
@@ -335,13 +347,13 @@ def arm(backarm:float, forearm:float):
 			joint = actuators.elbow,
 			body = link_inner(
 				actuators.midback.deloc('output'), 
-				actuators.elbow.deloc('gearbox', 'output'),
+				actuators.elbow.deloc('output'),
 				),
 			),
 		'fore_back': Solid(
 			joint = actuators.midfore,
 			body = link_outer(
-				actuators.elbow.deloc('gearbox', 'shell', 'output'), 
+				actuators.elbow.deloc('shell', 'output'), 
 				actuators.midfore.deloc('shell', 'output'),
 				),
 			),
@@ -349,14 +361,14 @@ def arm(backarm:float, forearm:float):
 			joint = actuators.wrist,
 			body = link_inner(
 				actuators.midfore.deloc('output'), 
-				actuators.wrist.deloc('gearbox', 'output'),
+				actuators.wrist.deloc('output'),
 				),
 			),
 		'wrist': Solid(
 			joint = actuators.tool,
 			body = link_outer(
-				actuators.wrist.deloc('gearbox', 'shell', 'output'),
-				actuators.tool.deloc('gearbox', 'shell', 'output'), 
+				actuators.wrist.deloc('shell', 'output'),
+				actuators.tool.deloc('shell', 'output'), 
 				),
 			),
 	})
@@ -480,7 +492,10 @@ def arm_alternate(backarm:float, forearm:float):
 
 if __name__ == '__madcad__':
 	settings.resolution = ('sqradm', 1.)
+#	settings.resolution = ('sqradm', 0.4)
 	
-	a = arm(200, 200)
+	arm = arm_repeated(200, 200)
 #	a = arm_alternate(200, 200)
-	a.default = [0, pi/3, pi/3, -pi/3, -pi/6, pi/4, 0]
+	arm.default = [0, pi/3, pi/3, -pi/3, -pi/6, pi/4, 0]
+
+#	export(arm, f"{__file__}/../out/arm-repeated-v1", (200, 200))
