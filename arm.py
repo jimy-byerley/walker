@@ -3,6 +3,7 @@ from copy import copy
 from madcad import *
 from madcad.joints import *
 from madcad.assembly import placement
+from madcad.scheme import *
 from pnprint import nprint
 
 # TODO remove this ugly path
@@ -12,6 +13,7 @@ sys.path.append(os.path.abspath(__file__+'/..'))
 
 
 from utils import export
+from sensors import mks_dualfoc
 from joint import joint_innermotor
 from gearbox.strainwave import strainwave_dual_crown, circular_screwing
 
@@ -71,6 +73,15 @@ def link_inner(base, tip):
 	epsilon = base.perimeter.radius*1e-3
 	hole_factor = 2
 
+	# create global vectors for base and tip, they are not necessarily the same as base and tip frames but ensure they share the same x
+	tip_z = vec3(tip.pose[2])
+	base_z = vec3(base.pose[2])
+	x = normalize(cross(tip_z, base_z))
+	tip_y = cross(tip_z, x)
+	base_y = cross(base_z, x)
+	base_o = base.pose * base.perimeter.center
+	tip_o = tip.pose * tip.perimeter.center
+
 	# main shape determined by the interfaces to be attached
 	raw = convexhull(mesh.mesh([
 		hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*3).transform(base.pose),
@@ -79,14 +90,14 @@ def link_inner(base, tip):
 		])).mergegroups()
 	# leave space for interfaces
 	profile = wire([
-			tip.pose * (tip.perimeter.center + tip.perimeter.radius*Y + tip.dscrew*0.7*Y - tip.perimeter.radius*4*Z),
-			tip.pose * (tip.perimeter.center + tip.perimeter.radius*Y + tip.dscrew*0.7*Y - tip.dscrew*hole_factor*2*Z),
-			tip.pose * (tip.perimeter.center + tip.perimeter.radius*Y - tip.dscrew*1*Y - tip.dscrew*hole_factor*Z),
-			tip.pose * (tip.perimeter.center + tip.perimeter.radius*Y - tip.dscrew*1*Y),
-			tip.pose * (tip.perimeter.center + tip.perimeter.radius*Y + tip.dscrew*6*Y),
-			base.pose * (base.perimeter.center + base.perimeter.radius*Y + base.perimeter.radius*Y - base.dscrew*2*Z),
-			]).segmented()
-	filet(profile, [4], width=tip.dscrew*2)
+			-tip.perimeter.radius*tip_y - tip.dscrew*0.7*tip_y - tip.perimeter.radius*4*tip_z,
+			-tip.perimeter.radius*tip_y - tip.dscrew*0.7*tip_y - tip.dscrew*hole_factor*2*tip_z,
+			-tip.perimeter.radius*tip_y + tip.dscrew*1*tip_y - tip.dscrew*hole_factor*tip_z,
+			-tip.perimeter.radius*tip_y + tip.dscrew*1*tip_y,
+			-tip.perimeter.radius*tip_y - tip.dscrew*6*tip_y,
+			noproject(base_o - tip_o + base.perimeter.radius*base_y + base.perimeter.radius*base_y - base.dscrew*2*base_z, x),
+			]).transform(translate(tip_o)).segmented()
+	filet(profile, [1,4], width=tip.dscrew*2)
 	area_tip = revolution(
 		profile,
 		axis = tip.perimeter.axis.transform(tip.pose),
@@ -187,22 +198,37 @@ def link_inner(base, tip):
 		screws = Solid(),
 		)
 
-def link_outer(base, tip):
+def link_outer(base, tip, driver=None):
 	epsilon = base.perimeter.radius*5e-3
+
+	tip_z = vec3(tip.pose[2])
+	base_z = vec3(base.pose[2])
+	x = normalize(cross(tip_z, base_z))
+	tip_y = cross(tip_z, x)
+	base_y = cross(base_z, x)
+	base_o = base.pose * base.perimeter.center
+	tip_o = tip.pose * tip.perimeter.center
+
 	body1 = convexhull(mesh.mesh([
 		hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*1.5).transform(base.pose),
 		hemisphere(tip.perimeter.axis.flip(), tip.perimeter.radius + tip.dscrew*1.2).transform(tip.pose),
 		])).mergegroups()
+	if driver:
+		body1 = convexhull(mesh.mesh([
+			hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*1.5).transform(base.pose),
+			hemisphere(tip.perimeter.axis.flip(), tip.perimeter.radius + tip.dscrew*1.2).transform(tip.pose),
+			inflate(convexhull(web([driver.deloc('controller', 'outline'), driver.deloc('outline')])), driver.width*0.15),
+			])).mergegroups()
 	profile_inner = Softened([
-		base.pose * (base.perimeter.center + base.perimeter.radius*1.5*Y),
-		base.pose * (base.perimeter.center + base.perimeter.radius*0*Y),
-		base.pose * (base.perimeter.center - base.perimeter.radius*1*Y),
-		tip.pose * (tip.perimeter.center - tip.perimeter.radius*1.5*Y + tip.perimeter.radius*0.2*Z),
+		base_o + base.perimeter.radius*1.5*base_y,
+		base_o + base.perimeter.radius*0*base_y,
+		base_o - base.perimeter.radius*1*base_y,
+		tip_o + tip.perimeter.radius*1.5*tip_y + tip.perimeter.radius*0.2*tip_z,
 		])
 	profile_outer = Softened([
-		base.pose * base.perimeter.center - base.perimeter.radius*1.5*Z + base.perimeter.radius*0.5*Y,
-		base.pose * base.perimeter.center + base.perimeter.radius*1*Z + base.perimeter.radius*0.5*Y,
-		tip.pose * tip.perimeter.center + tip.perimeter.radius*1.5*Y - tip.perimeter.radius*0.2*Z,
+		base_o + base.perimeter.radius*1.5*base_y + base.perimeter.radius*0.5*base_z,
+		base_o - base.perimeter.radius*1*base_y + base.perimeter.radius*0.5*base_z,
+		tip_o - tip.perimeter.radius*1.5*tip_y + tip.perimeter.radius*0.2*tip_z,
 		])
 	body2 = intersection(body1, 
 		extrusion(profile_inner, max(tip.perimeter.radius, base.perimeter.radius)*3*X, alignment=0.5).flip()
@@ -270,19 +296,17 @@ def arm_repeated(backarm:float, forearm:float):
 			rext = 50, 
 			motor_length=73,
 			)),
-		midback = copy(strainwave_dual_crown(
-			rext = 50,
-			nteeth = 60,
-			guided = True,
+		midback = copy(joint_innermotor(
+			rext = 50, 
+			motor_length=43,
 			)),
 		elbow = copy(joint_innermotor(
 			rext = 50, 
 			motor_length=73,
 			)),
-		midfore = copy(strainwave_dual_crown(
-			rext = 50,
-			nteeth = 60,
-			guided = True,
+		midfore = copy(joint_innermotor(
+			rext = 50, 
+			motor_length=43,
 			)),
 		wrist = copy(joint_innermotor(
 			rext = 50, 
@@ -293,12 +317,13 @@ def arm_repeated(backarm:float, forearm:float):
 			motor_length=43,
 			)),
 		)
+	driver = mks_dualfoc(controller=True)
 
 	# reference positions
 	s = stceil(backarm * 0.1)  # shift of orthogonal gearboxes
 #	e = -0.1  # excentricity to avoid singularities
 	e = 0
-	d = backarm*0.05
+	d = backarm*0.08
 	u = backarm*0.1
 #	e = 0
 	shoulder = O
@@ -314,9 +339,9 @@ def arm_repeated(backarm:float, forearm:float):
 	actuators.midback.pose = placement((Revolute, actuators.midback.output.perimeter.axis, Axis(midback,-Z)))
 	actuators.midfore.pose = placement((Revolute, actuators.midfore.output.perimeter.axis, Axis(midfore,-Z)))
 
-	actuators.shoulder.pose = placement((Revolute, actuators.shoulder.output.perimeter.axis, Axis(shoulder,Y)))
-	actuators.elbow.pose = placement((Revolute, actuators.elbow.output.perimeter.axis, Axis(elbow,Y)))
-	actuators.wrist.pose = placement((Revolute, actuators.wrist.output.perimeter.axis, Axis(wrist,Y)))
+	actuators.shoulder.pose = placement((Revolute, actuators.shoulder.output.perimeter.axis, Axis(shoulder,Y))) * rotate(pi,Z)
+	actuators.elbow.pose = placement((Revolute, actuators.elbow.output.perimeter.axis, Axis(elbow,Y))) * rotate(pi,Z)
+	actuators.wrist.pose = placement((Revolute, actuators.wrist.output.perimeter.axis, Axis(wrist,Y))) * rotate(pi,Z)
 	actuators.tool.pose = placement((Revolute, actuators.tool.output.perimeter.axis, Axis(tool,-Z)))
 
 	kinematic = Kinematic([
@@ -330,48 +355,77 @@ def arm_repeated(backarm:float, forearm:float):
 	], content={
 		'base': Solid(joint = actuators.base),
 		'shoulder': Solid(
-			joint = actuators.shoulder, 
+#			driver1 = driver.transform(actuators.base.pose * translate(-110*Z - 40*Y) * rotate(pi,Z) * rotate(pi/2,X)),
 			body = link_inner(
 				actuators.base.deloc('output'), 
 				actuators.shoulder.deloc('output'),
 				),
 			),
 		'back_back': Solid(
-			joint = actuators.midback,
+			shoulder = actuators.shoulder, 
+			midback = actuators.midback,
+#			driver1 = driver.transform(actuators.shoulder.pose * translate(40*Z - 30*Y) * rotate(pi,Y)),
+#			driver2 = driver.transform(actuators.shoulder.pose * translate(15*Z + 65*Y) * rotate(pi/2,Z) * rotate(3.5,Y) * translate(-driver.length/2*Y)),
+			driver = driver.transform(actuators.midback.pose * translate(35*Z - 10*Y) * rotate(pi,Y) * rotate(pi,Z) * translate(-driver.length*0.4*Y)),
 			body = link_outer(
 				actuators.shoulder.deloc('shell', 'output'), 
 				actuators.midback.deloc('shell', 'output'),
+#				driver.transform(actuators.shoulder.pose * translate(15*Z - 70*Y) * rotate(pi/2,Z) * rotate(pi,Y) * translate(-driver.length/2*Y)),
+				),
+			annotations = Solid(
+				backarm = note_distance(shoulder, elbow, project=Z, offset=backarm*0.8*Y),
+				midback = note_distance(midback, elbow, project=Z, offset=backarm*0.6*Y),
+				u = note_distance(shoulder, elbow, project=Y, offset=-backarm*0.8*X),
+				d = note_distance(midback, elbow, project=X, offset=-backarm*0.6*Y),
 				),
 			),
 		'back_fore': Solid(
-			joint = actuators.elbow,
 			body = link_inner(
 				actuators.midback.deloc('output'), 
 				actuators.elbow.deloc('output'),
 				),
 			),
 		'fore_back': Solid(
-			joint = actuators.midfore,
+			elbow = actuators.elbow,
+			midfore = actuators.midfore,
+#			driver1 = driver.transform(actuators.elbow.pose * translate(40*Z - 30*Y) * rotate(pi,Y)),
+#			driver2 = driver.transform(actuators.elbow.pose * translate(15*Z - 70*Y) * rotate(pi/2,Z) * rotate(pi,Y) * translate(-driver.length/2*Y)),
+			driver = driver.transform(actuators.midfore.pose * translate(35*Z - 10*Y) * rotate(pi,Y) * rotate(pi,Z) * translate(-driver.length*0.4*Y)),
 			body = link_outer(
 				actuators.elbow.deloc('shell', 'output'), 
 				actuators.midfore.deloc('shell', 'output'),
 				),
+			annotations = Solid(
+				backarm = note_distance(elbow, wrist, project=Z, offset=forearm*0.8*Y),
+				midback = note_distance(midfore, wrist, project=Z, offset=forearm*0.6*Y),
+				u = note_distance(elbow, wrist, project=Y, offset=-forearm*0.8*X),
+				d = note_distance(midfore, wrist, project=X, offset=-forearm*0.6*Y),
+				),
 			),
 		'fore_fore': Solid(
-			joint = actuators.wrist,
 			body = link_inner(
 				actuators.midfore.deloc('output'), 
 				actuators.wrist.deloc('output'),
 				),
+			driver = driver.transform(actuators.midfore.pose * translate(-110*Z - 10*Y) * rotate(pi,Z) * rotate(pi/2,X)),
 			),
 		'wrist': Solid(
-			joint = actuators.tool,
+			wrist = actuators.wrist,
+			tool = actuators.tool,
 			body = link_outer(
 				actuators.wrist.deloc('shell', 'output'),
 				actuators.tool.deloc('shell', 'output'), 
 				),
+			annotations = Solid(
+				tool = note_distance(wrist, tool, project=Z, offset=forearm*0.8*Y),
+				),
 			),
 	})
+#	l = link_outer(
+#				actuators.shoulder.deloc('shell', 'output'), 
+#				actuators.midback.deloc('shell', 'output'),
+#				driver.transform(actuators.shoulder.pose * translate(15*Z - 70*Y) * rotate(pi/2,Z) * rotate(pi,Y) * translate(-driver.length/2*Y)),
+#				)
 	return kinematic
 
 
@@ -447,45 +501,21 @@ def arm_alternate(backarm:float, forearm:float):
 		'base': Solid(joint = actuators.base),
 		'shoulder': Solid(
 			joint = actuators.shoulder, 
-#			body = link_inner(
-#				actuators.base.deloc('output'), 
-#				actuators.shoulder.deloc('gearbox', 'output'),
-#				),
 			),
 		'back_back': Solid(
 			joint = actuators.midback,
-#			body = link_outer(
-#				actuators.shoulder.deloc('gearbox', 'shell', 'output'), 
-#				actuators.midback.deloc('shell', 'output'),
-#				),
 			),
 		'back_fore': Solid(
 			joint = actuators.elbow,
-#			body = link_inner(
-#				actuators.midback.deloc('output'), 
-#				actuators.elbow.deloc('gearbox', 'output'),
-#				),
 			),
 		'fore_back': Solid(
 			joint = actuators.midfore,
-#			body = link_outer(
-#				actuators.elbow.deloc('gearbox', 'shell', 'output'), 
-#				actuators.midfore.deloc('shell', 'output'),
-#				),
 			),
 		'fore_fore': Solid(
 			joint = actuators.wrist,
-#			body = link_inner(
-#				actuators.midfore.deloc('output'), 
-#				actuators.wrist.deloc('gearbox', 'output'),
-#				),
 			),
 		'wrist': Solid(
 			joint = actuators.tool,
-#			body = link_outer(
-#				actuators.wrist.deloc('gearbox', 'shell', 'output'),
-#				actuators.tool.deloc('gearbox', 'shell', 'output'), 
-#				),
 			),
 	})
 	return kinematic

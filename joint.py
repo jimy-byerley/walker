@@ -310,6 +310,6 @@ if __name__ == '__madcad__':
 #	settings.resolution = ('sqradm', 0.8)
 	settings.resolution = ('sqradm', 0.3)
 	
-	j = joint_innermotor(rext=50, motor_length=73, details=False)
+	j = joint_innermotor(rext=50, motor_length=73, details=True)
 #	export(j, f"{__file__}/../out/joint-v1.5", (j.rext, j.height, round(j.motor.length)))
 	
