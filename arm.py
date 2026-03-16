@@ -315,21 +315,22 @@ def link_outer(base, tip, driver=False):
 		]).segmented()
 	chamfer(profile, [3], width=tip.dscrew*0.5)
 	slot_base = revolution(
-		profile.flip(),
+		profile,
 		axis = base.perimeter.axis,
 		).transform(base.pose * translate(base.perimeter.center)).finish()
 	profile = wire([
 			tip.perimeter.radius*X + tip.dscrew*3*X - tip.perimeter.radius*Z,
 			tip.perimeter.radius*X + tip.dscrew*3*X + epsilon*Z,
 			tip.perimeter.radius*X - tip.dscrew*1.2*X + epsilon*Z,
-			tip.perimeter.radius*X - tip.dscrew*1.2*X + tip.perimeter.radius*0.6*Z,
-			tip.perimeter.radius*4*Z,
+			tip.perimeter.radius*X - tip.dscrew*1.2*X + tip.perimeter.radius*0.5*Z,
+			tip.perimeter.radius*1.1*Z,
 		]).segmented()
 	chamfer(profile, [2], width=tip.dscrew*0.5)
-	slot_tip = revolution(profile.flip(),
+	filet(profile, [3], width=tip.perimeter.radius*0.3)
+	slot_tip = revolution(profile,
 		axis = tip.perimeter.axis,
 		).transform(tip.pose * translate(tip.perimeter.center)).finish()
-	body3 = intersection(body2, intersection(slot_base, slot_tip))
+	body3 = intersection(body2, union(slot_base, slot_tip).flip())
 
 	def screw_slots(interface):
 		return repeataround(
@@ -343,12 +344,12 @@ def link_outer(base, tip, driver=False):
 			).transform(interface.pose).flip()
 
 
-	def sensor_slot(interface, depth, height):
+	def sensor_slot(interface, depth, height, expand):
 		start = interface.perimeter.center + interface.perimeter.radius*Y - interface.dscrew*Y
 		slot = (extrusion(
 			fill(wire([
-				start - 0.1*interface.dscrew*Z - interface.dscrew*2*Y,
-				start - 0.1*interface.dscrew*Z + depth*Y,
+				start - expand*Z - interface.dscrew*2*Y,
+				start - expand*Z + depth*Y,
 				start + depth*Y + height*Z,
 				start - interface.dscrew*2*Y + height*Z + depth*Z,
 			])),
@@ -361,11 +362,8 @@ def link_outer(base, tip, driver=False):
 		filet(slot, slot.frontiers(), width=base.dscrew*0.4)
 		return slot
 	
-	base_sensor_slot = sensor_slot(base, base.dscrew*3, base.perimeter.radius*0.35)
-	tip_sensor_slot = sensor_slot(tip, tip.dscrew*1.4, tip.perimeter.radius*0.7)
-
-	body4 = intersection(body3, screw_slots(base) + screw_slots(tip))
-	body = intersection(body4, union(base_sensor_slot, tip_sensor_slot).flip())
+	base_sensor_slot = sensor_slot(base, base.dscrew*3, base.perimeter.radius*0.35, tip.perimeter.radius)
+	tip_sensor_slot = sensor_slot(tip, tip.dscrew*1.4, tip.perimeter.radius*0.7, 0.1*tip.dscrew)
 
 	if driver:	
 		driver = mks_dualfoc(controller=True)
@@ -389,19 +387,68 @@ def link_outer(base, tip, driver=False):
 #			* rotate(-pi/2,Z)
 #			* translate(-driver.length*Y)
 #			)
-#		driver = driver.transform(
-#			translate(tip_o + tip.perimeter.radius*0.85*tip_z - driver.length*Y + tip.perimeter.radius*Y -tip.perimeter.radius*0.1*x) 
-#			* mat4(mat3(x, tip_y, tip_z)) 
-#			* rotate(pi,X))
-
-#		driver = driver.transform(
-		driver = driver_box().transform(
-			translate(tip_o + tip.perimeter.radius*0.85*tip_z - tip.perimeter.radius*0.4*tip_y) 
+		driver = driver.transform(
+			translate(tip_o + tip.perimeter.radius*0.85*tip_z - driver.length*Y + tip.perimeter.radius*Y -tip.perimeter.radius*0.1*x) 
 			* mat4(mat3(x, tip_y, tip_z)) 
-			* rotate(pi,X) 
-			* rotate(pi,Z))
+			* rotate(pi,X))
+
+		height = driver.width*0.5
+		play = 0.3
+		thickness = 4
+		connections_opening = extrusion(fill(wire([
+			+driver.controller.width*0.5*X +driver.width*0.35*Y -driver.length*(Y-0.1*X),
+			+driver.controller.width*0.5*X +driver.width*0.35*Y,
+			-driver.controller.width*0.5*X +driver.width*0.35*Y,
+			-driver.controller.width*0.5*X +driver.width*0.35*Y -driver.length*(Y+0.1*X),
+			]).close().transform(driver.pose * translate(height*0.5*Z))), -height*2*Z)
+		driver_slot = inflate(extrusion(fill(driver.deloc('controller', 'outline')).transform(height*0.2*tip_z), -height*tip_z), play)
+		joint_slot_top = convexhull(web([
+				Circle(Axis(tip_o, tip_z).offset(tip.perimeter.radius*0.3*Z), tip.perimeter.radius - tip.dscrew*1.3),
+				Circle(Axis(tip_o, tip_z).offset(tip.perimeter.radius*0.7*Z), tip.perimeter.radius*0.8),
+				]))
+#		filet(joint_slot_top, joint_slot_top.edges(), width=10)
+		# interface between the link and the driver
+		interface = Solid(
+			width=stfloor(tip.perimeter.radius*1.4),
+			length=stfloor(tip.perimeter.radius*1.7),
+			height=stfloor(tip.perimeter.radius*0.4),
+			)
+		boundary = wire(parallelogram(
+			interface.width*x, 
+			interface.length*tip_y, 
+			origin = tip_o + tip.perimeter.radius*0.85*tip_z + project(base_o - tip_o, tip_y)*0.5 -tip.perimeter.radius*0.1*x,
+			alignment = (0.5, 0.5),
+			fill = False,
+			))
+		filet(boundary, [0,1,2,3], width=tip.dscrew*3)
+		interior = convexhull(mesh.mesh([
+			extrusion(boundary, -height*0.1*tip_z),
+			joint_slot_top,
+			])).mergegroups()
+
+		holder = intersection(
+			extrusion(fill(boundary).flip(), interface.height*0.9*tip_z), 
+			union(driver_slot, connections_opening).flip())
+		holder_slot = inflate(extrusion(
+			fill(boundary).flip().transform(-play*tip_z), 
+			(interface.height +play*2)*tip_z), play)
+		body3 = intersection(body3, union(interior, holder_slot).flip())
+
+		driver = Solid(
+			driver = driver,
+			holder = interface.update(
+				body = holder,
+				annotations = dict(
+					width = note_distance(boundary.points[0], boundary.points[1], offset=interface.width*0.2*tip_y),
+					length = note_distance(boundary.points[1], boundary.points[3], offset=interface.width*0.2*x),
+					),
+				))
 	else:
 		driver = None
+
+
+	body4 = intersection(body3, screw_slots(base) + screw_slots(tip))
+	body = intersection(body4, union(base_sensor_slot, tip_sensor_slot).flip())
 		
 	return Solid(
 		body = body.finish().option(color=vec3(0.4, 0.2, 0)),
