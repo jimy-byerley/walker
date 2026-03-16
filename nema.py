@@ -17,7 +17,7 @@ def coupling_key(diameter, length, depth=None):
 	if depth is None:
 		depth = stfloor(diameter*0.25)
 	width = stfloor(diameter*0.5)
-	return extrusion(flatsurface(convexoutline(web([
+	return extrusion(fill(convexoutline(web([
 		Circle(Axis(O, X), width/2),
 		Circle(Axis(O+Z*length, X), width/2),
 		]))), X*diameter)
@@ -33,7 +33,7 @@ def square(width, spacing, dscrew, lscrew, dhub, hhub):
 	return Solid(
 			width=width, spacing=spacing, dscrew=dscrew, lscrew=lscrew, dhub=dhub, hhub=hhub, 
 			screws=screws, hub=hub, outline=outline,
-			annotations=Solid(
+			annotations=dict(
 				width = note_distance(-width/2*X, width/2*X, offset=-width*0.8*Y),
 				spacing = note_distance(screws[0].center, screws[1].center, offset=0.3*width),
 				dhub = note_radius(wire(hub), offset=width*0.5),
@@ -49,7 +49,7 @@ def round(width, spacing, dscrew, lscrew, dhub, hhub):
 	return Solid(
 			width=width, spacing=spacing, dscrew=dscrew, lscrew=lscrew, dhub=dhub, hhub=hhub, 
 			screws=screws, hub=hub, outline=outline,
-			annotations=Solid(
+			annotations=dict(
 				width = note_distance(-width/2*X, +width/2*X, offset=width*0.8, text='ø {}'.format(width)),
 				spacing = note_distance(-spacing/2*X, +spacing/2*X, offset=width*0.6),
 				dhub = note_radius(wire(hub), offset=width*0.5),
@@ -80,7 +80,6 @@ def motor(dim='nema17', length=None, dshaft=None, lshaft=None, coupling=None, ro
 		dim = rounds[dim]
 	else:
 		dim = squares[dim]
-	print('length', length)
 	if length is None:
 		length = stceil(dim.width*1.1)
 	if dshaft is None:
@@ -88,7 +87,7 @@ def motor(dim='nema17', length=None, dshaft=None, lshaft=None, coupling=None, ro
 	if lshaft is None:
 		lshaft = stceil(dim.width*0.5)
 	body = union(
-		extrusion(flatsurface(dim.outline), -length*Z),
+		extrusion(fill(dim.outline), -length*Z),
 		cylinder(O, dim.hub.center, dim.hub.radius),
 		)
 	holes = mesh.mesh([
@@ -117,7 +116,7 @@ def motor(dim='nema17', length=None, dshaft=None, lshaft=None, coupling=None, ro
 		length=length,
 		dshaft=dshaft, 
 		lshaft=lshaft,
-		annotations=Solid(
+		annotations=dict(
 			dshaft = note_radius(shaft.group(0), text='ø {}'.format(dshaft)),
 			length = note_distance(O, O-length*Z, offset=dim.width*0.7),
 			lshaft = note_distance(O, O+lshaft*Z, offset=-dim.width*0.5),

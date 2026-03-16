@@ -89,10 +89,10 @@ backnail_attach_profile = convexoutline(web([
 	]))
 backnail = difference(tiphigh.transform(project(backnail_bot.origin, X)),
 	extrusion(
-		flatsurface(backnail_attach_profile).transform(0.5*width*Y).flip(), 
+		fill(backnail_attach_profile).transform(0.5*width*Y).flip(), 
 		nail_width*Y).orient()
 	+ extrusion(
-		flatsurface(backnail_attach_profile).transform(-0.5*width*Y), 
+		fill(backnail_attach_profile).transform(-0.5*width*Y), 
 		-nail_width*Y).orient()
 	)
 backnail_interference_profile = convexoutline(web([
@@ -117,10 +117,10 @@ frontnail_attach_profile = convexoutline(web([
 	]))
 frontnail = difference(tiplow.transform(leftnail_bot.origin*vec3(1,1,0)),
 	extrusion(
-		flatsurface(frontnail_attach_profile).transform(0.5*width*X).flip(), 
+		fill(frontnail_attach_profile).transform(0.5*width*X).flip(), 
 		2*width*X).orient()
 	+ extrusion(
-		flatsurface(frontnail_attach_profile).transform(-0.5*width*X), 
+		fill(frontnail_attach_profile).transform(-0.5*width*X), 
 		-2*width*X).orient()
 	)
 frontnail_interference_profile = convexoutline(web([
@@ -136,8 +136,8 @@ edge0_profile = convexoutline(web([
 	Circle(Axis(0.5*parallelogram_height*Z+front_dist*X,Y), 2*nail_hole_small),
 	]))
 edge0 = mesh.mesh([
-	extrusion(flatsurface(edge0_profile).transform(+(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=0).orient(),
-	extrusion(flatsurface(edge0_profile).transform(-(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=1).orient(),
+	extrusion(fill(edge0_profile).transform(+(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=0).orient(),
+	extrusion(fill(edge0_profile).transform(-(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=1).orient(),
 	])
 edge1_profile = convexoutline(web([
 	Circle(foot_top.transform(0.1*parallelogram_height*Z), 1.8*foot_hole_big) .mesh().transform(scaledir(X,1.5)),
@@ -145,8 +145,8 @@ edge1_profile = convexoutline(web([
 	Circle(Axis(1.5*parallelogram_height*Z+front_dist*X,Y), 2*nail_hole_big),
 	]))
 edge1 = mesh.mesh([
-	extrusion(flatsurface(edge1_profile).transform((0.5*width+washer+play)*Y), 0.5*width*Y, alignment=0).orient(),
-	extrusion(flatsurface(edge1_profile).transform(-(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=1).orient(),
+	extrusion(fill(edge1_profile).transform((0.5*width+washer+play)*Y), 0.5*width*Y, alignment=0).orient(),
+	extrusion(fill(edge1_profile).transform(-(0.5*width+washer+play)*Y), 0.5*width*Y, alignment=1).orient(),
 	])
 
 edgeside = convexoutline(web([

@@ -9,7 +9,7 @@ import nema
 import sensors
 
 
-
+@cachefunc
 def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, motor_lshaft=20, nteeth=60, details=False):
 	gearbox = strainwave_dual_crown(
 			rext = rext,
@@ -81,7 +81,7 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 		def magnet_slot(magnet):
 			magnet_bounds = magnet.body.box()
 			return extrusion(
-				flatsurface(convexoutline(web([
+				fill(convexoutline(web([
 					Circle(Axis(magnet_bounds.map(vec3(0, 0.5, 0.5))-play*X, Y), magnet_bounds.size.z/2),
 					Circle(Axis(magnet_bounds.map(vec3(1, 0.5, 0.5))+play*X, Y), magnet_bounds.size.z/2),
 					]))),
@@ -174,6 +174,7 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 				body = hat_body.finish(),
 				screws = screwing.screws,
 				sensor = rotor_encoder,
+				annotations = note_leading(rotor_encoder.pose * O, rotor_encoder.radius*2*(Z+Y), text="AS5600\nmagnetic position encoder")
 				)
 		else:
 			hat_body = intersection(union(hat, guide), cables_way)
@@ -240,14 +241,14 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 		else:
 			hat = shell.body
 		holds = convexhull(inflate(absolute_encoder2.deloc('board'), play)).flip()
-		outline = flatsurface(absolute_encoder2.deloc('outline'))
+		outline = fill(absolute_encoder2.deloc('outline'))
 		top_selection = {6,7,8,9,10}
 		top = union(
 			hat.group(top_selection), 
 			inflate(extrusion(outline, 1.7*shell.output.dscrew*d).orient(), thickness),
 			)
 #		outline = absolute_encoder2.deloc('outline')
-#		exterior = inflate(extrusion(flatsurface(union(
+#		exterior = inflate(extrusion(fill(union(
 #			web(outline).flip(),
 #			parallelogram(0.6*w*X, gearbox.height*2*Y, alignment=vec3(0.5, -0.1, 0), fill=False).transform(absolute_encoder2.pose),
 #			)), 1.7*shell.output.dscrew*d).orient(), thickness)
@@ -274,22 +275,18 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 		
 			mid = intersection(shell.mid, holds)
 
-			return gearbox.shell.update(
+			return copy(gearbox.shell).update(
 				hat = hat,
 				mid = mid,
 				sensor = absolute_encoder2,
+				annotations = note_leading(absolute_encoder2.pose * O, offset=w*(Y+Z), text="TC34725\ncolor position encoder")
 				)
 		else:
-			return gearbox.shell.update(body = hat)
+			return copy(gearbox.shell).update(body = hat)
 	
 	if details:
-		return Solid(
-			rext = gearbox.rext,
-			height = gearbox.height,
+		return copy(gearbox).update(
 			motor = motor,
-#			gearbox = gearbox,
-			input = gearbox.input,
-			output = gearbox.output,
 			shell = rework_shell(),
 			rotor = build_rotor(),
 			hat = build_hat(),
@@ -307,8 +304,8 @@ def joint_innermotor(rext=50, height=None, motor_length=43, motor_dshaft=5, moto
 
 
 if __name__ == '__madcad__':
-#	settings.resolution = ('sqradm', 0.8)
-	settings.resolution = ('sqradm', 0.3)
+	settings.resolution = ('sqradm', 0.8)
+#	settings.resolution = ('sqradm', 0.3)
 	
 	j = joint_innermotor(rext=50, motor_length=73, details=True)
 #	export(j, f"{__file__}/../out/joint-v1.5", (j.rext, j.height, round(j.motor.length)))

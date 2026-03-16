@@ -104,21 +104,20 @@ def link_inner(base, tip):
 		)
 	area_base = square(base.perimeter.axis.transform(base.pose), base.perimeter.radius*3)
 
-	removal = convexhull(web([
-		Circle(
-			base.perimeter.axis.transform(base.pose).offset(epsilon), 
-			base.perimeter.radius - base.dscrew*2),
-		Circle(
-			Axis(
-				tip.pose * tip.perimeter.axis.offset(-base.perimeter.radius*0.6-tip.dscrew*hole_factor*2).origin
-				- tip.perimeter.radius*0.8 * base.perimeter.axis.direction, 
-				base.perimeter.axis.direction), 
-			base.perimeter.radius*0.4),
-		])).flip()
-		
-
 	# it is sufficient to get overall shape
-	body1 = intersection(intersection(intersection(raw, area_tip), area_base), removal)
+	body1 = intersection(intersection(raw, area_tip), area_base)
+
+	# space for inner motor, is there is enough space
+	if base.perimeter.radius - base.dscrew < dot(tip_o - base_o, tip_z):
+		bucket = wire([
+			base_o + base.perimeter.radius*x - base.dscrew*x + base.dscrew*0.5*(base_z+x),
+			base_o + base.perimeter.radius*x - base.dscrew*x - base.dscrew*0.5*base_z,
+			base_o + base.perimeter.radius*x - base.dscrew*x - base.dscrew*(hole_factor*2.5)*base_z,
+			base_o - base.dscrew*(hole_factor*4)*base_z,
+			]).segmented().flip()
+		filet(bucket, [2], width=base.dscrew*2)
+		removal = revolution(bucket, Axis(base_o, base_z))
+		body1 = intersection(body1, removal)
 
 	# screws at interface
 	tip_screws_slot = repeataround(
@@ -183,7 +182,7 @@ def link_inner(base, tip):
 				base.dscrew*0.5,
 				), 
 			icosphere(base.perimeter.center + base.perimeter.radius*Y - base.dscrew*(hole_factor+epsilon)*Z, base.dscrew*0.5),
-			flatsurface(Circle(Axis(base.perimeter.center + base.perimeter.radius*Y - base.dscrew*hole_factor*Y, Z), base.dscrew*0.5)),
+			fill(Circle(Axis(base.perimeter.center + base.perimeter.radius*Y - base.dscrew*hole_factor*Y, Z), base.dscrew*0.5)),
 			])).mergegroups(),
 		axis = base.perimeter.axis, 
 		repetitions = base.div,
@@ -194,11 +193,89 @@ def link_inner(base, tip):
 	body = intersection(body1, tip_screws_slot + base_screws_slot)
 
 	return Solid(
-		body = body.finish().option(color=vec3(0.4, 0.1, 0.05)),
+		body = body.finish(),
+#		body = body.finish().option(color=vec3(0.4, 0.1, 0.05)),
+#		body = body.finish().option(color=vec3(0.1, 0.2, 0.4)),
 		screws = Solid(),
 		)
 
-def link_outer(base, tip, driver=None):
+def driver_box():
+	epsilon = 1e-3
+	driver = mks_dualfoc(controller=True)
+	height = stceil(driver.width*0.5)
+	prelength = stceil(driver.width*0.6)
+
+	profile = wire(Softened([
+		driver.width*0.5*X + height*0.5*Z,
+		driver.width*0.7*X + height*0.5*Z,
+		driver.width*0.7*X,
+		driver.controller.width*0.8*X - driver.width*0.5*Z,
+		driver.controller.width*0.5*X - driver.width*0.5*Z,
+		])).transform(driver.pose)
+	controller = driver.controller
+	dscrew = driver.dscrew
+	path = wire([
+		controller.width*0.5*X,
+		Interpolated([
+			controller.width*0.5*X + controller.length*Y - dscrew*Y,
+			controller.width*0.5*X + controller.length*Y - dscrew*X,
+			controller.length*Y + controller.width*0.1*Y,
+			-controller.width*0.5*X + controller.length*Y + dscrew*X,
+			-controller.width*0.5*X + controller.length*Y - dscrew*Y,
+		]),
+		-controller.width*0.5*X,
+		]).transform(driver.pose * translate(-driver.width*0.5*Z))
+	boundary = convexhull(
+		tube(profile.transform((path[0]-profile[-1])), path)
+		+ hemisphere(Axis(+driver.width*0.5*X -prelength*Y,Y), height*0.5)
+		+ hemisphere(Axis(-driver.width*0.5*X -prelength*Y,Y), height*0.5)
+		).mergegroups()
+	
+	slot = screw_slot(
+			Axis(O, Y).transform(driver.pose),
+			dscrew,
+			hole = dscrew*2,
+			rslot = dscrew*2.5,
+			expand = prelength - dscrew*3,			)
+	screw_slots = mesh.mesh([
+		slot.transform(+driver.width*0.5*X -prelength*Y +(height*0.5-dscrew)*X +dscrew*Y),
+		slot.transform(-driver.width*0.5*X -prelength*Y -(height*0.5-dscrew)*X +dscrew*Y),
+		])
+#	boundary = intersection(boundary, screw_slots)
+
+	thickness = 1.5
+	inside = union(
+		union(
+			inflate(extrusion(fill(driver.outline), driver.width*Z).orient(), thickness),
+			inflate(extrusion(fill(driver.controller.outline.transform(driver.controller.pose)), driver.width*Z).orient(), thickness),
+			),
+		inflate(convexhull(driver.controller.connections['gpios']), thickness-epsilon).transform(driver.controller.pose),
+		)
+
+	profile = wire([
+		-height*2*Z + driver.length*0.3*Y,
+		-height*0.5*Z +driver.length*0.3*Y,
+		-height*0.5*Z -driver.width*2*Y,
+		]).flip().transform(driver.pose)
+	filet(profile, [1], width=height*0.4)
+	profile = extrusion(profile, driver.width*2*X, alignment=0.5)
+
+	connections = parallelogram(
+		driver.controller.width*1.1*X, 
+		-driver.width*2*Y, 
+		driver.width*2*Z, 
+		origin=driver.controller.width*0.6*Y, 
+		fill=True, 
+		alignment=vec3(0.5, 0, 0.5))
+
+	body = intersection(intersection(intersection(boundary, inside.flip()), connections), profile + screw_slots)
+
+	return Solid(
+		electronics = driver,
+		body = body.finish(),
+		)
+
+def link_outer(base, tip, driver=False):
 	epsilon = base.perimeter.radius*5e-3
 
 	tip_z = vec3(tip.pose[2])
@@ -209,16 +286,11 @@ def link_outer(base, tip, driver=None):
 	base_o = base.pose * base.perimeter.center
 	tip_o = tip.pose * tip.perimeter.center
 
+
 	body1 = convexhull(mesh.mesh([
 		hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*1.5).transform(base.pose),
 		hemisphere(tip.perimeter.axis.flip(), tip.perimeter.radius + tip.dscrew*1.2).transform(tip.pose),
 		])).mergegroups()
-	if driver:
-		body1 = convexhull(mesh.mesh([
-			hemisphere(base.perimeter.axis.flip(), base.perimeter.radius + base.dscrew*1.5).transform(base.pose),
-			hemisphere(tip.perimeter.axis.flip(), tip.perimeter.radius + tip.dscrew*1.2).transform(tip.pose),
-			inflate(convexhull(web([driver.deloc('controller', 'outline'), driver.deloc('outline')])), driver.width*0.15),
-			])).mergegroups()
 	profile_inner = Softened([
 		base_o + base.perimeter.radius*1.5*base_y,
 		base_o + base.perimeter.radius*0*base_y,
@@ -259,28 +331,82 @@ def link_outer(base, tip, driver=None):
 		).transform(tip.pose * translate(tip.perimeter.center)).finish()
 	body3 = intersection(body2, intersection(slot_base, slot_tip))
 
-	base_screw_slots = repeataround(
-		cylinder(
-			base.perimeter.center + base.perimeter.radius*X -epsilon*Z, 
-			base.perimeter.center + base.perimeter.radius*X +base.dscrew*2.5*Z,
-			base.dscrew*3/5,
-			),
-		axis = base.perimeter.axis,
-		repetitions = base.div,
-		).transform(base.pose).flip()
-	tip_screw_slots = repeataround(
-		cylinder(
-			tip.perimeter.center + tip.perimeter.radius*X -epsilon*Z, 
-			tip.perimeter.center + tip.perimeter.radius*X +tip.dscrew*2.5*Z,
-			tip.dscrew*3.3/5,
-			),
-		axis = tip.perimeter.axis,
-		repetitions = tip.div,
-		).transform(tip.pose).flip()
-	body = intersection(body3, base_screw_slots + tip_screw_slots)
+	def screw_slots(interface):
+		return repeataround(
+			cylinder(
+				interface.perimeter.center + interface.perimeter.radius*X -epsilon*Z, 
+				interface.perimeter.center + interface.perimeter.radius*X +interface.dscrew*2.5*Z,
+				interface.dscrew*3/5,
+				),
+			axis = interface.perimeter.axis,
+			repetitions = interface.div,
+			).transform(interface.pose).flip()
+
+
+	def sensor_slot(interface, depth, height):
+		start = interface.perimeter.center + interface.perimeter.radius*Y - interface.dscrew*Y
+		slot = (extrusion(
+			fill(wire([
+				start - 0.1*interface.dscrew*Z - interface.dscrew*2*Y,
+				start - 0.1*interface.dscrew*Z + depth*Y,
+				start + depth*Y + height*Z,
+				start - interface.dscrew*2*Y + height*Z + depth*Z,
+			])),
+			(interface.perimeter.radius*2*sin(pi/interface.div) - interface.dscrew*2.5)*X,
+			alignment = 0.5,
+			).transform(
+				interface.pose 
+				* rotate(pi/interface.div,Z) 
+			).flip())
+		filet(slot, slot.frontiers(), width=base.dscrew*0.4)
+		return slot
 	
-#		filet(body, body.frontiers(3,2) + body.frontiers(3,0), width=base.perimeter.radius*0.1)
-	return Solid(body=body.finish().option(color=vec3(0.4, 0.2, 0)))
+	base_sensor_slot = sensor_slot(base, base.dscrew*3, base.perimeter.radius*0.35)
+	tip_sensor_slot = sensor_slot(tip, tip.dscrew*1.4, tip.perimeter.radius*0.7)
+
+	body4 = intersection(body3, screw_slots(base) + screw_slots(tip))
+	body = intersection(body4, union(base_sensor_slot, tip_sensor_slot).flip())
+
+	if driver:	
+		driver = mks_dualfoc(controller=True)
+#		driver2 = driver.transform(
+#			translate(tip.pose*tip.perimeter.center + tip.perimeter.radius*0.8*tip_z - driver.length*0.7*tip_y) 
+#			* mat4(mat3(x, tip_y, tip_z)) 
+#			* rotate(-pi/2,X)
+#			* rotate(pi/2,Z)
+#			* translate(-driver.length*0.3*Y))
+#		driver2 = driver.transform(
+#			translate(tip_o + tip.dscrew*4*tip_z)
+#			* mat4(mat3(*dirbase(normalize(x - tip_y), normalize(tip_o - base_o))))
+#			* translate(tip.perimeter.radius*1.2*Z)
+#			* rotate(-pi/2,Z)
+#			* translate(-driver.length*Y)
+#			)
+#		driver2 = driver.transform(
+#			translate(tip_o + tip.dscrew*4*tip_z)
+#			* mat4(mat3(*dirbase(-x, normalize(noproject(tip_o - base_o, base_z)))))
+#			* translate(-tip.perimeter.radius*1.2*Z)
+#			* rotate(-pi/2,Z)
+#			* translate(-driver.length*Y)
+#			)
+		driver = driver.transform(
+			translate(tip_o + tip.perimeter.radius*0.85*tip_z - driver.length*Y + tip.perimeter.radius*Y -tip.perimeter.radius*0.1*x) 
+			* mat4(mat3(x, tip_y, tip_z)) 
+			* rotate(pi,X))
+
+#		driver = driver.transform(
+##		driver = driver_box().transform(
+#			translate(tip_o + tip.perimeter.radius*0.85*tip_z - tip.perimeter.radius*0.4*tip_y) 
+#			* mat4(mat3(x, tip_y, tip_z)) 
+#			* rotate(pi,X) 
+#			* rotate(pi,Z))
+	else:
+		driver = None
+		
+	return Solid(
+		body = body.finish().option(color=vec3(0.4, 0.2, 0)),
+		driver = driver,
+		)
 
 
 def arm_repeated(backarm:float, forearm:float):
@@ -331,8 +457,8 @@ def arm_repeated(backarm:float, forearm:float):
 	elbow = shoulder + backarm*Z + backarm*e*X +u*Y
 	wrist = elbow + forearm*Z + forearm*e*X +u*Y
 	tool = wrist + actuators.wrist.rext*2.2*Z - forearm*e*X
-	midback = mix(shoulder, elbow, 0.65) -s*Y +d*X
-	midfore = mix(elbow, wrist, 0.65) -s*Y +d*X
+	midback = elbow + normalize(shoulder - elbow) * (actuators.elbow.rext + actuators.elbow.output.dscrew*4) -s*Y +d*X
+	midfore = wrist + normalize(elbow - wrist) * (actuators.wrist.rext + actuators.wrist.output.dscrew*4) -s*Y +d*X
 
 	# place actuators
 	actuators.base.pose = placement((Revolute, actuators.base.output.perimeter.axis, Axis(scapula,-Z)))
@@ -366,11 +492,11 @@ def arm_repeated(backarm:float, forearm:float):
 			midback = actuators.midback,
 #			driver1 = driver.transform(actuators.shoulder.pose * translate(40*Z - 30*Y) * rotate(pi,Y)),
 #			driver2 = driver.transform(actuators.shoulder.pose * translate(15*Z + 65*Y) * rotate(pi/2,Z) * rotate(3.5,Y) * translate(-driver.length/2*Y)),
-			driver = driver.transform(actuators.midback.pose * translate(35*Z - 10*Y) * rotate(pi,Y) * rotate(pi,Z) * translate(-driver.length*0.4*Y)),
+#			driver = driver.transform(actuators.midback.pose * translate(35*Z - 10*Y) * rotate(pi,Y) * rotate(pi,Z) * translate(-driver.length*0.4*Y)),
 			body = link_outer(
 				actuators.shoulder.deloc('shell', 'output'), 
 				actuators.midback.deloc('shell', 'output'),
-#				driver.transform(actuators.shoulder.pose * translate(15*Z - 70*Y) * rotate(pi/2,Z) * rotate(pi,Y) * translate(-driver.length/2*Y)),
+				driver=True,
 				),
 			annotations = Solid(
 				backarm = note_distance(shoulder, elbow, project=Z, offset=backarm*0.8*Y),
@@ -390,10 +516,11 @@ def arm_repeated(backarm:float, forearm:float):
 			midfore = actuators.midfore,
 #			driver1 = driver.transform(actuators.elbow.pose * translate(40*Z - 30*Y) * rotate(pi,Y)),
 #			driver2 = driver.transform(actuators.elbow.pose * translate(15*Z - 70*Y) * rotate(pi/2,Z) * rotate(pi,Y) * translate(-driver.length/2*Y)),
-			driver = driver.transform(actuators.midfore.pose * translate(35*Z - 10*Y) * rotate(pi,Y) * rotate(pi,Z) * translate(-driver.length*0.4*Y)),
+#			driver = driver.transform(actuators.midfore.pose * translate(35*Z - 10*Y) * rotate(pi,Y) * rotate(pi,Z) * translate(-driver.length*0.4*Y)),
 			body = link_outer(
 				actuators.elbow.deloc('shell', 'output'), 
 				actuators.midfore.deloc('shell', 'output'),
+				driver=True,
 				),
 			annotations = Solid(
 				backarm = note_distance(elbow, wrist, project=Z, offset=forearm*0.8*Y),
@@ -407,7 +534,11 @@ def arm_repeated(backarm:float, forearm:float):
 				actuators.midfore.deloc('output'), 
 				actuators.wrist.deloc('output'),
 				),
-			driver = driver.transform(actuators.midfore.pose * translate(-110*Z - 10*Y) * rotate(pi,Z) * rotate(pi/2,X)),
+			driver = driver.transform(actuators.midfore.pose 
+				* translate(-120*Z - 10*Y + 22*X) 
+				* rotate(pi,Z) 
+				* rotate(pi/2-0.3,X)
+				* rotate(-0.3,Z)),
 			),
 		'wrist': Solid(
 			wrist = actuators.wrist,
@@ -421,11 +552,11 @@ def arm_repeated(backarm:float, forearm:float):
 				),
 			),
 	})
-#	l = link_outer(
-#				actuators.shoulder.deloc('shell', 'output'), 
-#				actuators.midback.deloc('shell', 'output'),
-#				driver.transform(actuators.shoulder.pose * translate(15*Z - 70*Y) * rotate(pi/2,Z) * rotate(pi,Y) * translate(-driver.length/2*Y)),
-#				)
+	l = link_outer(
+				actuators.elbow.deloc('shell', 'output'), 
+				actuators.midfore.deloc('shell', 'output'),
+				driver=True,
+				)
 	return kinematic
 
 
@@ -524,8 +655,8 @@ if __name__ == '__madcad__':
 	settings.resolution = ('sqradm', 1.)
 #	settings.resolution = ('sqradm', 0.4)
 	
-	arm = arm_repeated(200, 200)
+	arm = arm_repeated(210, 210)
 #	a = arm_alternate(200, 200)
 	arm.default = [0, pi/3, pi/3, -pi/3, -pi/6, pi/4, 0]
 
-#	export(arm, f"{__file__}/../out/arm-repeated-v1", (200, 200))
+#	export(arm, f"{__file__}/../out/arm-repeated-v0.2", (200, 200))

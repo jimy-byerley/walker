@@ -101,9 +101,7 @@ def screw_slot(axis: Axis, dscrew: float, rslot=None, hole=0., screw=0., expand=
 		if isinstance(expand, bool):		expand = 2*rslot
 		profile.append(o + rslot*x + expand*z)
 		profile.append(o + rslot*x)
-	print('   gen', hole, screw, hole or screw)
 	if hole or screw:
-		print('   !!')
 		if flat:
 			profile.append(o + 0.5*dscrew*(x-z) - (rslot-dscrew)*z)
 			hole = max(hole, dot(o-profile[-1], z))
@@ -113,11 +111,8 @@ def screw_slot(axis: Axis, dscrew: float, rslot=None, hole=0., screw=0., expand=
 		profile.append(o + 0.4*dscrew*x - (hole+0.1*dscrew)*z)
 		profile.append(o + 0.4*dscrew*x - (hole+screw)*z)
 		profile.append(o - (hole+screw+0.4*dscrew)*z)
-		print('   generated hole', hole, screw, len(profile))
 	else:
-		print('   problem')
 		profile.append(o)
-	print('  screw', repr(profile), expand, hole, screw)
 	return revolution(wire(profile).segmented(), Axis(o,-z)).finish()
 
 def bolt_slot(a: vec3, b: vec3, dscrew: float, rslot=None, hole=True, expanda=True, expandb=True) -> Mesh:

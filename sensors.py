@@ -22,7 +22,7 @@ def sensor_color():
 		]).close().segmented()
 	chamfer(outline, outline.indices, width=dscrew)
 
-	board = extrusion(flatsurface(web(outline) + web(holes)), Z*thickness)
+	board = extrusion(fill(web(outline) + web(holes)), Z*thickness)
 	sensor = brick(center=9.5*Y, size=vec3(2, 2.4, 0.65), alignment=vec3(0.5, 0.5, 0)) .transform(Z*thickness)
 	led = brick(center=9.5*Y + 3*X, size=vec3(2, 3, 1.5), alignment=vec3(0.5, 0.5, 0)) .transform(Z*thickness)
 	connections = brick(center=width*Y, size=vec3(width, 3, 3), alignment=vec3(0.5, 1, 0)) .transform(Z*thickness)
@@ -54,7 +54,7 @@ def sensor_magnetic():
 		Circle(Axis((width/2-spacing)*-X, Z), dscrew*0.5),
 		Circle(Axis((width/2-spacing)*+X, Z), dscrew*0.5),
 		]
-	board = extrusion(flatsurface(outline.flip() + web(holes)), Z*thickness)
+	board = extrusion(fill(outline.flip() + web(holes)), Z*thickness)
 	sensor = brick(size=vec3(4.9, 3.9, 1.75), alignment=vec3(0.5, 0.5, 0)).transform(Z*thickness)
 	connections = brick(size=vec3(8.5, 4, 1.5), alignment=vec3(0.5, 1, 0), center=diameter*0.5*Y).transform(Z*thickness)
 	return Solid(
@@ -106,7 +106,7 @@ def esp32_lite():
 	outline = parallelogram(width*X, length*Y, alignment=vec2(0.5, 0), fill=False)
 	holes = Circle(Axis(-(width*0.5 - dscrew)*X + (length - dscrew)*Y, -Z), dscrew/2)
 	chamfer(outline, [2,3], width=dscrew)
-	board = extrusion(flatsurface(web([outline, holes])), -thickness*Z)
+	board = extrusion(fill(web([outline, holes])), -thickness*Z)
 	gpios = (
 		parallelogram(pin*X, pin*npins*Y, (2*pin+thickness)*Z, origin=-thickness/2*Z + (10 + pin/2)*Y + (width - pin)/2*X, alignment=vec3(0.5, 0, 0.5))
 		+ parallelogram(pin*X, pin*npins*Y, (2*pin+thickness)*Z, origin=-thickness/2*Z + (10 + pin/2)*Y + -(width - pin)/2*X, alignment=vec3(0.5, 0, 0.5))
@@ -152,7 +152,7 @@ def mks_dualfoc(controller=False):
 		Circle(Axis(+(width*0.5 - dscrew)*X + (length - dscrew)*Y, -Z), dscrew/2),
 		])
 	chamfer(outline, [0,1,2,3], width=dscrew)
-	board = extrusion(flatsurface(web([outline, holes])), -thickness*Z)
+	board = extrusion(fill(web([outline, holes])), -thickness*Z)
 	connections_power = (
 		power_pin(2) .transform(translate(30*Y + width/2*X) * rotate(pi/2, Z))
 		+ power_pin(6) .transform(translate(50*Y - width/2*X) * rotate(-pi/2, Z))

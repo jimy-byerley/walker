@@ -149,7 +149,7 @@ def foot(
 		thickness = 1.5
 		body = difference(
 			extrusion(
-				flatsurface(leg_profile),
+				fill(leg_profile),
 				width*Y,
 				alignment=0.5,
 				).orient(),
@@ -181,10 +181,10 @@ def foot(
 	
 		backnail = difference(tiphigh.transform(project(backnail_bot.origin, X)),
 			extrusion(
-				flatsurface(backnail_attach_profile).transform(0.5*width*Y).flip(), 
+				fill(backnail_attach_profile).transform(0.5*width*Y).flip(), 
 				nail_width*Y).orient()
 			+ extrusion(
-				flatsurface(backnail_attach_profile).transform(-0.5*width*Y), 
+				fill(backnail_attach_profile).transform(-0.5*width*Y), 
 				-nail_width*Y).orient()
 			)
 		backnail_interference_profile = leg_profile.transform(rotatearound(front_angle, backnail_top) * foot_top.origin - foot_top.origin)
@@ -210,10 +210,10 @@ def foot(
 			]))
 		frontnail = difference(tiplow.transform(leftnail_bot.origin*vec3(1,1,0)),
 			extrusion(
-				flatsurface(frontnail_attach_profile).transform(0.5*width*X).flip(), 
+				fill(frontnail_attach_profile).transform(0.5*width*X).flip(), 
 				2*width*X).orient()
 			+ extrusion(
-				flatsurface(frontnail_attach_profile).transform(-0.5*width*X), 
+				fill(frontnail_attach_profile).transform(-0.5*width*X), 
 				-2*width*X).orient()
 			)
 		frontnail_interference_profile = convexoutline(web([

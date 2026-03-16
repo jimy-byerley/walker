@@ -522,7 +522,7 @@ def strainwave_circulating(rball, rballs, nballs=None):
 				* ( rballs - 0.55*rball * mix(1, -cos(t*nballs), 0.35) )    
 				for t in linrange(0, 2*pi/nballs, div=20)]).flip()
 	cage_pattern = extrusion(
-		flatsurface(wire([cage_profile1, cage_profile2]).close()).flip().transform(-0.8*rball*Z), 
+		fill(wire([cage_profile1, cage_profile2]).close()).flip().transform(-0.8*rball*Z), 
 		3*rball*Z)
 	cage_pattern.mergeclose()
 	

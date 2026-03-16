@@ -76,7 +76,7 @@ def coilspring_conical(length, d1=None, d2=None, thickness=None, solid=True):
 	
 	return Solid(
 			part=tube(
-				flatsurface(Circle(
+				fill(Circle(
 					(path[0],Y), 
 					thickness/2, 
 					resolution=('div',6)
@@ -102,10 +102,10 @@ backwave = extrusion(wave(2*legdir+0.8*X, 5*legdir+1*X, 1, 0.1*X).flip(), 0.6*Y,
 frontwave = extrusion(wave(2*legdir-0.8*X, 4*legdir-0.8*X, 1, -0.1*X), 0.6*Y, alignment=0.5)
 
 kin.content['leg'] = [twister, normalizer, backwave, frontwave, icosphere(0*Z,0.5), icosphere(1*Z,0.4)]
-kin.content['top'] = extrusion(flatsurface(convexoutline(web([
+kin.content['top'] = extrusion(fill(convexoutline(web([
 	Circle(Axis(p,Z), 0.5)  for p in regon(Axis(1*Z,Z), 0.9, 3) 
 	]))), 0.2*Z, alignment=0.5).orient()
-kin.content['bot'] = extrusion(flatsurface(convexoutline(web([
+kin.content['bot'] = extrusion(fill(convexoutline(web([
 	Circle(Axis(p,Z), 0.7)  for p in regon(Axis(0*Z,Z), 0.8, 3) 
 	]))), 0.2*Z).orient()
 #kin.content['nail-0'] += icosphere(0*Z+X, 0.4) + icosphere(1*Z+X, 0.3) + cylinder(-1*Z+X, 1*Z+X, 0.15)

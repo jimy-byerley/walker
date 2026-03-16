@@ -209,7 +209,7 @@ def gearbox_clearance(interface, max_radius=0):
 
 def shoulder_body(leg, scapula_active, scapula_passive):
 	hull = convexhull(mesh.mesh([
-		flatsurface(Circle(
+		fill(Circle(
 			leg.perimeter.axis.transform(leg.pose), 
 			leg.perimeter.radius + leg.dscrew*2,
 			)),
@@ -218,11 +218,11 @@ def shoulder_body(leg, scapula_active, scapula_passive):
 #			scapula_active.perimeter.axis.transform(scapula_active.pose).offset(-scapula_active.dscrew).origin,
 #			scapula_active.perimeter.radius + scapula_active.dscrew*1.5,
 #			),
-		flatsurface(Circle(
+		fill(Circle(
 			scapula_active.perimeter.axis.transform(scapula_active.pose),
 			scapula_active.perimeter.radius + scapula_active.dscrew*1.6,
 			)),
-		flatsurface(Circle(
+		fill(Circle(
 			scapula_passive.perimeter.axis.transform(scapula_passive.pose),
 			scapula_passive.perimeter.radius + scapula_passive.dscrew*1.6,
 			)),
@@ -300,13 +300,13 @@ def backleg_body(refs, shoulder, gearbox, passive1, passive2):
 	top = web(Circle(Axis(refs.shoulder, Z), gearbox.output.perimeter.radius*1.4))
 	body = intersection(
 		intersection(
-			extrusion(flatsurface(right), -gearbox.output.perimeter.radius*2*Y).orient(),
+			extrusion(fill(right), -gearbox.output.perimeter.radius*2*Y).orient(),
 			extrusion(left, gearbox.output.perimeter.radius*3*X, alignment=0.5).orient(),
 			),
 		extrusion(top, -refs.leg_length*Z, alignment=0.5).orient(),
 		)
 	body = intersection(body, saddle(
-		flatsurface(Ellipsis(
+		fill(Ellipsis(
 			shoulder.output.perimeter.axis.transform(shoulder.pose).offset(-gearbox.output.perimeter.radius*0.6).origin,
 			gearbox.output.perimeter.radius*0.8*X,
 			gearbox.output.perimeter.radius*0.4*Y,
@@ -356,7 +356,7 @@ def foreleg_body(refs, leading, edge1, edge2, foot):
 #		Circle(edge2.perimeter.axis.transform(edge2.pose), edge2.perimeter.radius + edge2.dscrew*1.5),
 #		]))
 #	body = intersection(
-#			extrusion(flatsurface(right), leading.perimeter.radius*2*Y).orient(),
+#			extrusion(fill(right), leading.perimeter.radius*2*Y).orient(),
 #			extrusion(left, leading.perimeter.radius*3*X, alignment=0.5).flip(),
 #			)
 	right = convexhull(mesh.mesh([
@@ -410,8 +410,8 @@ color_traverse = vec3(0.8, 0.4, 0.1)*0.5
 
 def traverse_bone(start, stop, screw_height, rext):
 	return extrans(
-#		flatsurface(wire(Circle(Axis(O, Y), rext))).flip(),
-		flatsurface(wire(Ellipsis(O, Z*rext, X*rext + screw_height*0.5*Y))).flip(),
+#		fill(wire(Circle(Axis(O, Y), rext))).flip(),
+		fill(wire(Ellipsis(O, Z*rext, X*rext + screw_height*0.5*Y))).flip(),
 		[translate(start) * mat4(scaledir(Y, 0))]
 		+ [translate(mix(
 			start + screw_height*Y,
