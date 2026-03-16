@@ -389,17 +389,17 @@ def link_outer(base, tip, driver=False):
 #			* rotate(-pi/2,Z)
 #			* translate(-driver.length*Y)
 #			)
-		driver = driver.transform(
-			translate(tip_o + tip.perimeter.radius*0.85*tip_z - driver.length*Y + tip.perimeter.radius*Y -tip.perimeter.radius*0.1*x) 
-			* mat4(mat3(x, tip_y, tip_z)) 
-			* rotate(pi,X))
+#		driver = driver.transform(
+#			translate(tip_o + tip.perimeter.radius*0.85*tip_z - driver.length*Y + tip.perimeter.radius*Y -tip.perimeter.radius*0.1*x) 
+#			* mat4(mat3(x, tip_y, tip_z)) 
+#			* rotate(pi,X))
 
 #		driver = driver.transform(
-##		driver = driver_box().transform(
-#			translate(tip_o + tip.perimeter.radius*0.85*tip_z - tip.perimeter.radius*0.4*tip_y) 
-#			* mat4(mat3(x, tip_y, tip_z)) 
-#			* rotate(pi,X) 
-#			* rotate(pi,Z))
+		driver = driver_box().transform(
+			translate(tip_o + tip.perimeter.radius*0.85*tip_z - tip.perimeter.radius*0.4*tip_y) 
+			* mat4(mat3(x, tip_y, tip_z)) 
+			* rotate(pi,X) 
+			* rotate(pi,Z))
 	else:
 		driver = None
 		
